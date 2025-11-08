@@ -33,11 +33,31 @@ func NewAuthHandler(
 	}
 }
 
+func (h *AuthHandler) ShowRegister(w http.ResponseWriter, r *http.Request) {
+	sessionID := r.URL.Query().Get("session_id")
+	if sessionID == "" {
+		sessionID, _ = utils.GenerateRandomString(32)
+	}
+
+	tmpl, err := template.ParseFiles("templates/register.html")
+	if err != nil {
+		http.Error(w, "Template error", http.StatusInternalServerError)
+		return
+	}
+
+	data := map[string]interface{}{
+		"SessionID": sessionID,
+	}
+
+	tmpl.Execute(w, data)
+}
+
 func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Email    string `json:"email"`
-		Password string `json:"password"`
-		Name     string `json:"name"`
+		Email     string `json:"email"`
+		Password  string `json:"password"`
+		Name      string `json:"name"`
+		SessionID string `json:"session_id"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -72,19 +92,88 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	respondJSON(w, http.StatusCreated, map[string]interface{}{
+	response := map[string]interface{}{
 		"message": "User registered successfully",
 		"user": map[string]string{
 			"email": user.Email,
 			"name":  user.Name,
 		},
-	})
+	}
+
+	if req.SessionID != "" {
+		session, err := h.sessionRepo.FindBySessionID(ctx, req.SessionID)
+		if err == nil {
+			session.UserID = user.ID
+			session.Authenticated = true
+			h.sessionRepo.Update(ctx, session)
+
+			code, _ := utils.GenerateRandomString(16)
+			code = code + "_" + req.SessionID
+
+			authCode := &models.AuthorizationCode{
+				Code:        code,
+				ClientID:    session.ClientID,
+				UserID:      user.ID,
+				RedirectURI: session.RedirectURI,
+				Scope:       session.Scope,
+				ExpiresAt:   time.Now().Add(10 * time.Minute),
+			}
+			h.authCodeRepo.Create(ctx, authCode)
+
+			redirectURL, _ := url.Parse(session.RedirectURI)
+			q := redirectURL.Query()
+			q.Set("code", code)
+			if session.State != "" {
+				q.Set("state", session.State)
+			}
+			redirectURL.RawQuery = q.Encode()
+
+			response["redirect_uri"] = redirectURL.String()
+		}
+	}
+
+	respondJSON(w, http.StatusCreated, response)
+}
+
+func (h *AuthHandler) ShowLogin(w http.ResponseWriter, r *http.Request) {
+	sessionID := r.URL.Query().Get("session_id")
+	if sessionID == "" {
+		http.Error(w, "Missing session_id", http.StatusBadRequest)
+		return
+	}
+
+	ctx := context.Background()
+	session, err := h.sessionRepo.FindBySessionID(ctx, sessionID)
+
+	data := map[string]interface{}{
+		"SessionID": sessionID,
+	}
+
+	if err == nil {
+		client, err := h.clientRepo.FindByClientID(ctx, session.ClientID)
+		if err == nil {
+			data["ClientName"] = client.Name
+		}
+		if session.Scope != "" {
+			data["Scope"] = session.Scope
+			data["Scopes"] = strings.Split(session.Scope, " ")
+		}
+	}
+
+	tmpl, err := template.ParseFiles("templates/login.html")
+	if err != nil {
+		http.Error(w, "Template error", http.StatusInternalServerError)
+		return
+	}
+
+	tmpl.Execute(w, data)
 }
 
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Email    string `json:"email"`
-		Password string `json:"password"`
+		Email     string `json:"email"`
+		Password  string `json:"password"`
+		SessionID string `json:"session_id"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -102,6 +191,42 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	if !utils.CheckPasswordHash(req.Password, user.Password) {
 		respondError(w, http.StatusUnauthorized, "invalid_credentials", "Invalid email or password")
 		return
+	}
+
+	if req.SessionID != "" {
+		session, err := h.sessionRepo.FindBySessionID(ctx, req.SessionID)
+		if err == nil && !session.Authenticated {
+			session.UserID = user.ID
+			session.Authenticated = true
+			h.sessionRepo.Update(ctx, session)
+
+			code, _ := utils.GenerateRandomString(16)
+			code = code + "_" + req.SessionID
+
+			authCode := &models.AuthorizationCode{
+				Code:        code,
+				ClientID:    session.ClientID,
+				UserID:      user.ID,
+				RedirectURI: session.RedirectURI,
+				Scope:       session.Scope,
+				ExpiresAt:   time.Now().Add(10 * time.Minute),
+			}
+			h.authCodeRepo.Create(ctx, authCode)
+
+			redirectURL, _ := url.Parse(session.RedirectURI)
+			q := redirectURL.Query()
+			q.Set("code", code)
+			if session.State != "" {
+				q.Set("state", session.State)
+			}
+			redirectURL.RawQuery = q.Encode()
+
+			respondJSON(w, http.StatusOK, map[string]string{
+				"redirect_uri": redirectURL.String(),
+				"code":         code,
+			})
+			return
+		}
 	}
 
 	accessToken, err := utils.GenerateAccessToken(

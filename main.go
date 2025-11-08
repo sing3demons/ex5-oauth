@@ -44,9 +44,10 @@ func main() {
 	userRepo := repository.NewUserRepository(db.DB)
 	clientRepo := repository.NewClientRepository(db.DB)
 	authCodeRepo := repository.NewAuthCodeRepository(db.DB)
+	sessionRepo := repository.NewSessionRepository(db.DB)
 
-	authHandler := handlers.NewAuthHandler(userRepo, clientRepo, authCodeRepo, cfg)
-	oauthHandler := handlers.NewOAuthHandler(userRepo, clientRepo, authCodeRepo, cfg)
+	authHandler := handlers.NewAuthHandler(userRepo, clientRepo, authCodeRepo, sessionRepo, cfg)
+	oauthHandler := handlers.NewOAuthHandler(userRepo, clientRepo, authCodeRepo, sessionRepo, cfg)
 	clientHandler := handlers.NewClientHandler(clientRepo)
 	discoveryHandler := handlers.NewDiscoveryHandler("http://localhost:" + cfg.ServerPort)
 	jwksHandler := handlers.NewJWKSHandler(publicKey)
@@ -56,7 +57,9 @@ func main() {
 	r.HandleFunc("/.well-known/openid-configuration", discoveryHandler.WellKnown).Methods("GET")
 	r.HandleFunc("/.well-known/jwks.json", jwksHandler.JWKS).Methods("GET")
 
+	r.HandleFunc("/auth/register", authHandler.ShowRegister).Methods("GET")
 	r.HandleFunc("/auth/register", authHandler.Register).Methods("POST")
+	r.HandleFunc("/auth/login", authHandler.ShowLogin).Methods("GET")
 	r.HandleFunc("/auth/login", authHandler.Login).Methods("POST")
 
 	r.HandleFunc("/oauth/authorize", oauthHandler.Authorize).Methods("GET")
@@ -150,6 +153,23 @@ func createIndexes(db *mongo.Database) error {
 	}
 
 	_, err = authCodesCollection.Indexes().CreateOne(ctx, mongo.IndexModel{
+		Keys:    bson.D{{Key: "expires_at", Value: 1}},
+		Options: options.Index().SetExpireAfterSeconds(0),
+	})
+	if err != nil {
+		return err
+	}
+
+	sessionsCollection := db.Collection("sessions")
+	_, err = sessionsCollection.Indexes().CreateOne(ctx, mongo.IndexModel{
+		Keys:    bson.D{{Key: "session_id", Value: 1}},
+		Options: options.Index().SetUnique(true),
+	})
+	if err != nil {
+		return err
+	}
+
+	_, err = sessionsCollection.Indexes().CreateOne(ctx, mongo.IndexModel{
 		Keys:    bson.D{{Key: "expires_at", Value: 1}},
 		Options: options.Index().SetExpireAfterSeconds(0),
 	})

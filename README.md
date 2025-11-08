@@ -4,17 +4,20 @@ OAuth2 และ OpenID Connect (OIDC) Authorization Server แบบ stateless 
 
 ## คุณสมบัติ
 
-- ✅ OAuth2 Authorization Code Flow
+- ✅ OAuth2 Authorization Code Flow with Session
 - ✅ OAuth2 Client Credentials Flow
 - ✅ OAuth2 Refresh Token Flow
 - ✅ OpenID Connect (OIDC) Support
 - ✅ JWT-based Stateless Tokens (RS256)
 - ✅ RSA Key Pair Generation
+- ✅ HTML Login & Register Pages
+- ✅ Session Management
 - ✅ User Registration & Authentication
 - ✅ Client Registration
 - ✅ OIDC Discovery Endpoint
 - ✅ JWKS Endpoint
 - ✅ UserInfo Endpoint
+- ✅ Authorization Code with Session ID Tracking
 
 ## โครงสร้างโปรเจกต์
 
@@ -84,6 +87,11 @@ go run main.go
 
 ### Authentication
 
+#### Show Register Page
+```bash
+GET /auth/register?session_id=SESSION_ID
+```
+
 #### Register User
 ```bash
 POST /auth/register
@@ -92,8 +100,14 @@ Content-Type: application/json
 {
   "email": "user@example.com",
   "password": "password123",
-  "name": "John Doe"
+  "name": "John Doe",
+  "session_id": "optional_session_id"
 }
+```
+
+#### Show Login Page
+```bash
+GET /auth/login?session_id=SESSION_ID
 ```
 
 #### Login
@@ -103,7 +117,8 @@ Content-Type: application/json
 
 {
   "email": "user@example.com",
-  "password": "password123"
+  "password": "password123",
+  "session_id": "optional_session_id"
 }
 ```
 
@@ -125,7 +140,9 @@ Content-Type: application/json
 #### Authorization Endpoint
 ```bash
 GET /oauth/authorize?response_type=code&client_id=CLIENT_ID&redirect_uri=REDIRECT_URI&scope=openid profile email&state=STATE
-Authorization: Bearer ACCESS_TOKEN
+
+# จะ redirect ไปหน้า login พร้อม session_id
+# หลัง login สำเร็จจะ redirect กลับพร้อม authorization code
 ```
 
 #### Token Endpoint (Authorization Code)
@@ -170,7 +187,39 @@ GET /.well-known/jwks.json
 
 ## ตัวอย่างการใช้งาน
 
-### 1. ลงทะเบียนผู้ใช้
+### วิธีที่ 1: ผ่าน Browser (แนะนำ)
+
+1. **ลงทะเบียน OAuth Client:**
+```bash
+curl -X POST http://localhost:8080/clients/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Test App",
+    "redirect_uris": ["http://localhost:3000/callback"]
+  }'
+```
+
+2. **เปิด Browser และไปที่:**
+```
+http://localhost:8080/oauth/authorize?response_type=code&client_id=YOUR_CLIENT_ID&redirect_uri=http://localhost:3000/callback&scope=openid%20profile%20email&state=random123
+```
+
+3. **Login หรือ Register** ผ่านหน้า web
+
+4. **รับ Authorization Code** จาก callback URL
+
+5. **แลก Code เป็น Token:**
+```bash
+curl -X POST http://localhost:8080/oauth/token \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "grant_type=authorization_code&code=YOUR_CODE&client_id=CLIENT_ID&client_secret=CLIENT_SECRET&redirect_uri=http://localhost:3000/callback"
+```
+
+ดูรายละเอียดเพิ่มเติมใน [test_browser_flow.md](test_browser_flow.md)
+
+### วิธีที่ 2: ผ่าน API โดยตรง
+
+#### 1. ลงทะเบียนผู้ใช้ (ไม่ผ่าน OAuth flow)
 
 ```bash
 curl -X POST http://localhost:8080/auth/register \
@@ -182,18 +231,7 @@ curl -X POST http://localhost:8080/auth/register \
   }'
 ```
 
-### 2. ลงทะเบียน OAuth Client
-
-```bash
-curl -X POST http://localhost:8080/clients/register \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "Test App",
-    "redirect_uris": ["http://localhost:3000/callback"]
-  }'
-```
-
-### 3. Login เพื่อรับ Access Token
+#### 2. Login เพื่อรับ Access Token (ไม่ผ่าน OAuth flow)
 
 ```bash
 curl -X POST http://localhost:8080/auth/login \
@@ -204,22 +242,7 @@ curl -X POST http://localhost:8080/auth/login \
   }'
 ```
 
-### 4. ขอ Authorization Code
-
-```bash
-curl -X GET "http://localhost:8080/oauth/authorize?response_type=code&client_id=YOUR_CLIENT_ID&redirect_uri=http://localhost:3000/callback&scope=openid profile email&state=random_state" \
-  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
-```
-
-### 5. แลก Authorization Code เป็น Token
-
-```bash
-curl -X POST http://localhost:8080/oauth/token \
-  -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "grant_type=authorization_code&code=AUTH_CODE&client_id=CLIENT_ID&client_secret=CLIENT_SECRET&redirect_uri=http://localhost:3000/callback"
-```
-
-### 6. ดึงข้อมูล UserInfo
+#### 3. ดึงข้อมูล UserInfo
 
 ```bash
 curl -X GET http://localhost:8080/oauth/userinfo \

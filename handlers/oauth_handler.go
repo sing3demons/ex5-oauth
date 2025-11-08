@@ -18,6 +18,7 @@ type OAuthHandler struct {
 	userRepo     *repository.UserRepository
 	clientRepo   *repository.ClientRepository
 	authCodeRepo *repository.AuthCodeRepository
+	sessionRepo  *repository.SessionRepository
 	config       *config.Config
 }
 
@@ -25,12 +26,14 @@ func NewOAuthHandler(
 	userRepo *repository.UserRepository,
 	clientRepo *repository.ClientRepository,
 	authCodeRepo *repository.AuthCodeRepository,
+	sessionRepo *repository.SessionRepository,
 	cfg *config.Config,
 ) *OAuthHandler {
 	return &OAuthHandler{
 		userRepo:     userRepo,
 		clientRepo:   clientRepo,
 		authCodeRepo: authCodeRepo,
+		sessionRepo:  sessionRepo,
 		config:       cfg,
 	}
 }
@@ -76,51 +79,30 @@ func (h *OAuthHandler) Authorize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	authHeader := r.Header.Get("Authorization")
-	if authHeader == "" {
-		respondError(w, http.StatusUnauthorized, "unauthorized", "Authorization required")
-		return
-	}
-
-	tokenString := strings.TrimPrefix(authHeader, "Bearer ")
-	claims, err := utils.ValidateToken(tokenString, h.config.PublicKey)
+	sessionID, err := utils.GenerateRandomString(32)
 	if err != nil {
-		respondError(w, http.StatusUnauthorized, "invalid_token", "Invalid or expired token")
+		respondError(w, http.StatusInternalServerError, "server_error", "Failed to generate session")
 		return
 	}
 
-	code, err := utils.GenerateRandomString(32)
-	if err != nil {
-		respondError(w, http.StatusInternalServerError, "server_error", "Failed to generate code")
+	session := &models.Session{
+		SessionID:     sessionID,
+		ClientID:      clientID,
+		RedirectURI:   redirectURI,
+		Scope:         scope,
+		State:         state,
+		ResponseType:  responseType,
+		Authenticated: false,
+		ExpiresAt:     time.Now().Add(10 * time.Minute),
+	}
+
+	if err := h.sessionRepo.Create(ctx, session); err != nil {
+		respondError(w, http.StatusInternalServerError, "server_error", "Failed to create session")
 		return
 	}
 
-	authCode := &models.AuthorizationCode{
-		Code:        code,
-		ClientID:    clientID,
-		UserID:      claims.UserID,
-		RedirectURI: redirectURI,
-		Scope:       scope,
-		ExpiresAt:   time.Now().Add(10 * time.Minute),
-	}
-
-	if err := h.authCodeRepo.Create(ctx, authCode); err != nil {
-		respondError(w, http.StatusInternalServerError, "server_error", "Failed to create authorization code")
-		return
-	}
-
-	redirectURL, _ := url.Parse(redirectURI)
-	q := redirectURL.Query()
-	q.Set("code", code)
-	if state != "" {
-		q.Set("state", state)
-	}
-	redirectURL.RawQuery = q.Encode()
-
-	respondJSON(w, http.StatusOK, map[string]string{
-		"redirect_uri": redirectURL.String(),
-		"code":         code,
-	})
+	loginURL := "/auth/login?session_id=" + sessionID
+	http.Redirect(w, r, loginURL, http.StatusFound)
 }
 
 func (h *OAuthHandler) Token(w http.ResponseWriter, r *http.Request) {
