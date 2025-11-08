@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"html/template"
 	"net/http"
-	"net/url"
 	"oauth2-server/config"
 	"oauth2-server/models"
 	"oauth2-server/repository"
@@ -99,14 +98,6 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response := map[string]interface{}{
-		"message": "User registered successfully",
-		"user": map[string]string{
-			"email": user.Email,
-			"name":  user.Name,
-		},
-	}
-
 	if req.SessionID != "" {
 		session, err := h.sessionRepo.FindBySessionID(ctx, req.SessionID)
 		if err == nil {
@@ -130,18 +121,31 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 			}
 			h.authCodeRepo.Create(ctx, authCode)
 
-			redirectURL, _ := url.Parse(session.RedirectURI)
-			q := redirectURL.Query()
-			q.Set("code", code)
-			if session.State != "" {
-				q.Set("state", session.State)
+			// Determine response mode
+			responseMode := GetResponseMode(r)
+			
+			// Prepare response parameters
+			params := map[string]string{
+				"code": code,
 			}
-			redirectURL.RawQuery = q.Encode()
+			if session.State != "" {
+				params["state"] = session.State
+			}
 
-			response["redirect_uri"] = redirectURL.String()
+			// Send response based on mode
+			SendAuthorizationResponse(w, r, session.RedirectURI, params, responseMode)
+			return
 		}
 	}
 
+	// If no session, return JSON response
+	response := map[string]interface{}{
+		"message": "User registered successfully",
+		"user": map[string]string{
+			"email": user.Email,
+			"name":  user.Name,
+		},
+	}
 	respondJSON(w, http.StatusCreated, response)
 }
 
@@ -226,18 +230,19 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 			}
 			h.authCodeRepo.Create(ctx, authCode)
 
-			redirectURL, _ := url.Parse(session.RedirectURI)
-			q := redirectURL.Query()
-			q.Set("code", code)
-			if session.State != "" {
-				q.Set("state", session.State)
+			// Determine response mode
+			responseMode := GetResponseMode(r)
+			
+			// Prepare response parameters
+			params := map[string]string{
+				"code": code,
 			}
-			redirectURL.RawQuery = q.Encode()
+			if session.State != "" {
+				params["state"] = session.State
+			}
 
-			respondJSON(w, http.StatusOK, map[string]string{
-				"redirect_uri": redirectURL.String(),
-				"code":         code,
-			})
+			// Send response based on mode
+			SendAuthorizationResponse(w, r, session.RedirectURI, params, responseMode)
 			return
 		}
 	}
