@@ -214,7 +214,7 @@ func (h *OAuthHandler) handleAuthorizationCodeGrant(w http.ResponseWriter, r *ht
 		return
 	}
 
-	refreshToken, err := utils.GenerateRefreshToken(user.ID, h.config.PrivateKey, h.config.RefreshTokenExpiry)
+	refreshToken, err := utils.GenerateRefreshToken(user.ID, authCode.Scope, h.config.PrivateKey, h.config.RefreshTokenExpiry)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "server_error", "Failed to generate refresh token")
 		return
@@ -263,7 +263,7 @@ func (h *OAuthHandler) handleRefreshTokenGrant(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	claims, err := utils.ValidateToken(refreshToken, h.config.PublicKey)
+	claims, err := utils.ValidateRefreshToken(refreshToken, h.config.PublicKey)
 	if err != nil {
 		respondError(w, http.StatusBadRequest, "invalid_grant", "Invalid refresh token")
 		return
@@ -275,16 +275,24 @@ func (h *OAuthHandler) handleRefreshTokenGrant(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	// Use requested scope or default
+	// Use requested scope or original scope from refresh token
 	scope := requestedScope
 	if scope == "" {
-		scope = utils.GetDefaultScope()
+		// No scope requested, use original scope from refresh token
+		scope = claims.Scope
 	} else {
+		// Validate requested scope
 		if !utils.ValidateScope(scope) {
 			respondError(w, http.StatusBadRequest, "invalid_scope", "Invalid scope requested")
 			return
 		}
 		scope = utils.NormalizeScope(scope)
+		
+		// Validate scope downgrade - ensure requested scopes are subset of original
+		if err := utils.ValidateScopeDowngrade(scope, claims.Scope); err != nil {
+			respondError(w, http.StatusBadRequest, "invalid_scope", err.Error())
+			return
+		}
 	}
 
 	accessToken, err := utils.GenerateAccessToken(
@@ -300,7 +308,7 @@ func (h *OAuthHandler) handleRefreshTokenGrant(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	newRefreshToken, err := utils.GenerateRefreshToken(user.ID, h.config.PrivateKey, h.config.RefreshTokenExpiry)
+	newRefreshToken, err := utils.GenerateRefreshToken(user.ID, scope, h.config.PrivateKey, h.config.RefreshTokenExpiry)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "server_error", "Failed to generate refresh token")
 		return

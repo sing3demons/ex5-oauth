@@ -193,6 +193,7 @@ func (h *TokenExchangeHandler) HandleTokenExchange(w http.ResponseWriter, r *htt
 
 		refreshToken, err = utils.GenerateRefreshToken(
 			userID,
+			scope,
 			h.config.PrivateKey,
 			h.config.RefreshTokenExpiry,
 		)

@@ -255,7 +255,8 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	refreshToken, err := utils.GenerateRefreshToken(user.ID, h.config.PrivateKey, h.config.RefreshTokenExpiry)
+	scope := "openid profile email"
+	refreshToken, err := utils.GenerateRefreshToken(user.ID, scope, h.config.PrivateKey, h.config.RefreshTokenExpiry)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "server_error", "Failed to generate refresh token")
 		return
@@ -266,7 +267,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		TokenType:    "Bearer",
 		ExpiresIn:    h.config.AccessTokenExpiry,
 		RefreshToken: refreshToken,
-		Scope:        "openid profile email",
+		Scope:        scope,
 	}
 
 	respondJSON(w, http.StatusOK, response)

@@ -50,11 +50,21 @@ func GenerateAccessToken(userID, email, name, scope string, privateKey *rsa.Priv
 	return token.SignedString(privateKey)
 }
 
-func GenerateRefreshToken(userID string, privateKey *rsa.PrivateKey, expiry int64) (string, error) {
-	claims := jwt.RegisteredClaims{
-		Subject:   userID,
-		ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Duration(expiry) * time.Second)),
-		IssuedAt:  jwt.NewNumericDate(time.Now()),
+type RefreshTokenClaims struct {
+	UserID string `json:"sub"`
+	Scope  string `json:"scope"`
+	jwt.RegisteredClaims
+}
+
+func GenerateRefreshToken(userID, scope string, privateKey *rsa.PrivateKey, expiry int64) (string, error) {
+	claims := RefreshTokenClaims{
+		UserID: userID,
+		Scope:  scope,
+		RegisteredClaims: jwt.RegisteredClaims{
+			Subject:   userID,
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Duration(expiry) * time.Second)),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+		},
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
@@ -93,6 +103,25 @@ func ValidateToken(tokenString string, publicKey *rsa.PublicKey) (*JWTClaims, er
 	}
 
 	if claims, ok := token.Claims.(*JWTClaims); ok && token.Valid {
+		return claims, nil
+	}
+
+	return nil, jwt.ErrSignatureInvalid
+}
+
+func ValidateRefreshToken(tokenString string, publicKey *rsa.PublicKey) (*RefreshTokenClaims, error) {
+	token, err := jwt.ParseWithClaims(tokenString, &RefreshTokenClaims{}, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
+			return nil, errors.New("unexpected signing method")
+		}
+		return publicKey, nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	if claims, ok := token.Claims.(*RefreshTokenClaims); ok && token.Valid {
 		return claims, nil
 	}
 

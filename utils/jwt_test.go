@@ -60,7 +60,7 @@ func TestGenerateRefreshToken(t *testing.T) {
 		t.Fatalf("Failed to generate keys: %v", err)
 	}
 
-	token, err := GenerateRefreshToken("user123", privateKey, 604800)
+	token, err := GenerateRefreshToken("user123", "openid profile email", privateKey, 604800)
 
 	if err != nil {
 		t.Fatalf("Failed to generate refresh token: %v", err)
@@ -320,7 +320,7 @@ func TestGenerateRefreshTokenWithZeroExpiry(t *testing.T) {
 		t.Fatalf("Failed to generate keys: %v", err)
 	}
 
-	token, err := GenerateRefreshToken("user123", privateKey, 0)
+	token, err := GenerateRefreshToken("user123", "openid profile email", privateKey, 0)
 	if err != nil {
 		t.Fatalf("Failed to generate refresh token: %v", err)
 	}

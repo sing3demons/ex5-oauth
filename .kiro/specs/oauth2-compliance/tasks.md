@@ -7,33 +7,33 @@
   - Add global scope registry initialization
   - _Requirements: 1.0, 1.1_
 
-- [-] 2. Enhance Client and AuthCode Models
+- [x] 2. Enhance Client and AuthCode Models
   - [x] 2.1 Update Client model
     - Add AllowedScopes []string field to Client struct
     - Add GrantTypes []string field to Client struct
     - Update client repository methods to handle new fields
     - _Requirements: 1.2_
 
-  - [-] 2.2 Update AuthorizationCode model
+  - [x] 2.2 Update AuthorizationCode model
     - Add Nonce string field for ID token replay protection
     - Add CodeChallenge and ChallengeMethod fields for PKCE support
     - Update auth code repository methods
     - _Requirements: 1.5, 2.0_
 
-- [ ] 3. Implement Scope Validation Service
-  - [ ] 3.1 Create scope validator
+- [-] 3. Implement Scope Validation Service
+  - [x] 3.1 Create scope validator
     - Implement ValidateScope function using registry
     - Implement NormalizeScope to remove duplicates and invalid scopes
     - Implement ValidateScopeName for scope name format validation
     - _Requirements: 1.1_
 
-  - [ ] 3.2 Add client scope restriction validation
+  - [x] 3.2 Add client scope restriction validation
     - Implement ValidateScopeAgainstAllowed function
     - Check requested scopes against client's AllowedScopes
     - Return detailed error with unauthorized scopes list
     - _Requirements: 1.2_
 
-  - [ ] 3.3 Add scope downgrade validation
+  - [-] 3.3 Add scope downgrade validation
     - Implement ValidateScopeDowngrade for refresh token flow
     - Ensure requested scopes are subset of original scopes
     - Store original scopes with refresh token
