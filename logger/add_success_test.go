@@ -22,7 +22,7 @@ func TestLogger_AddSuccess(t *testing.T) {
 	logger.AddSuccess("action", "login")
 
 	output := captureOutput(func() {
-		logger.Flush(200)
+		logger.Flush(200, "Test completed")
 	})
 
 	var log DetailLog
@@ -69,7 +69,7 @@ func TestLogger_AddSuccessMixedTypes(t *testing.T) {
 	logger.AddSuccess("data", map[string]interface{}{"key": "value"})
 
 	output := captureOutput(func() {
-		logger.Flush(200)
+		logger.Flush(200, "Test completed")
 	})
 
 	var log DetailLog
@@ -107,7 +107,7 @@ func TestLogger_AddSuccessSingleValue(t *testing.T) {
 	logger.AddSuccess("status", "completed")
 
 	output := captureOutput(func() {
-		logger.Flush(200)
+		logger.Flush(200, "Test completed")
 	})
 
 	var log DetailLog
@@ -137,7 +137,7 @@ func TestLogger_AddSuccessWithAddMetadata(t *testing.T) {
 	logger.AddMetadata("method", "POST")
 
 	output := captureOutput(func() {
-		logger.Flush(200)
+		logger.Flush(200, "Test completed")
 	})
 
 	var log DetailLog
@@ -177,7 +177,7 @@ func TestLogger_AddSuccessOverwriteWithAddMetadata(t *testing.T) {
 	logger.AddMetadata("key", "single value")
 
 	output := captureOutput(func() {
-		logger.Flush(200)
+		logger.Flush(200, "Test completed")
 	})
 
 	var log DetailLog

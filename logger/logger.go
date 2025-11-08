@@ -348,6 +348,40 @@ func (l *Logger) cleanup() {
 	l.startTime = time.Now()
 }
 
+// StartTransaction initializes a new transaction with IDs
+func (l *Logger) StartTransaction(transactionID, sessionID string) {
+	l.transactionID = transactionID
+	l.sessionID = sessionID
+	l.startTime = time.Now()
+	l.metadata = make(map[string]interface{})
+}
+
+// AddMetadata adds or overwrites a metadata key-value pair
+func (l *Logger) AddMetadata(key string, value interface{}) {
+	l.metadata[key] = value
+}
+
+// AddSuccess adds a value to metadata, creating an array if the key already exists
+// This is useful for accumulating multiple values for the same key
+func (l *Logger) AddSuccess(key string, value interface{}) {
+	existing, exists := l.metadata[key]
+	if !exists {
+		// First value - store as single value
+		l.metadata[key] = value
+		return
+	}
+
+	// Check if existing value is already an array
+	if arr, isArray := existing.([]interface{}); isArray {
+		// Append to existing array
+		l.metadata[key] = append(arr, value)
+		return
+	}
+
+	// Convert single value to array with both old and new values
+	l.metadata[key] = []interface{}{existing, value}
+}
+
 func dataToString(data interface{}) string {
 	if data == nil {
 		return ""
