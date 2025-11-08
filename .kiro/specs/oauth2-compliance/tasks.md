@@ -39,7 +39,7 @@
     - Store original scopes with refresh token
     - _Requirements: 1.4_
 
-- [-] 4. Implement Claim Filtering Service
+- [x] 4. Implement Claim Filtering Service
   - Create ClaimFilter service to filter user claims based on scopes
   - Implement GetClaimsForScopes using scope registry
   - Update ID token generation to use claim filtering

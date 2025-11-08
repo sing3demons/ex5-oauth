@@ -156,12 +156,14 @@ func TestValidateToken(t *testing.T) {
 		t.Errorf("Expected UserID 'user123', got '%s'", claims.UserID)
 	}
 
-	if claims.Email != "user@example.com" {
-		t.Errorf("Expected Email 'user@example.com', got '%s'", claims.Email)
+	// Access tokens should NOT include email and name (only scope)
+	// These should be empty as per OAuth2 best practices
+	if claims.Email != "" {
+		t.Errorf("Expected Email to be empty in access token, got '%s'", claims.Email)
 	}
 
-	if claims.Name != "John Doe" {
-		t.Errorf("Expected Name 'John Doe', got '%s'", claims.Name)
+	if claims.Name != "" {
+		t.Errorf("Expected Name to be empty in access token, got '%s'", claims.Name)
 	}
 
 	if claims.Scope != "openid profile" {
