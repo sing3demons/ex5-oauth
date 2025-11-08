@@ -32,6 +32,7 @@ func (h *ClientHandler) RegisterClient(w http.ResponseWriter, r *http.Request) {
 		RedirectURIs  []string `json:"redirect_uris"`
 		AllowedScopes []string `json:"allowed_scopes,omitempty"`
 		GrantTypes    []string `json:"grant_types,omitempty"`
+		IsPublic      bool     `json:"is_public,omitempty"` // For PKCE clients (SPA, mobile apps)
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -97,10 +98,14 @@ func (h *ClientHandler) RegisterClient(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	clientSecret, err := utils.GenerateRandomString(64)
-	if err != nil {
-		respondError(w, http.StatusInternalServerError, "server_error", "Failed to generate client secret")
-		return
+	var clientSecret string
+	// Only generate client_secret for confidential clients
+	if !req.IsPublic {
+		clientSecret, err = utils.GenerateRandomString(64)
+		if err != nil {
+			respondError(w, http.StatusInternalServerError, "server_error", "Failed to generate client secret")
+			return
+		}
 	}
 
 	client := &models.Client{
@@ -124,9 +129,14 @@ func (h *ClientHandler) RegisterClient(w http.ResponseWriter, r *http.Request) {
 
 	response := map[string]interface{}{
 		"client_id":     client.ClientID,
-		"client_secret": client.ClientSecret,
 		"name":          client.Name,
 		"redirect_uris": client.RedirectURIs,
+		"is_public":     req.IsPublic,
+	}
+	
+	// Only include client_secret for confidential clients
+	if client.ClientSecret != "" {
+		response["client_secret"] = client.ClientSecret
 	}
 	
 	if len(client.AllowedScopes) > 0 {

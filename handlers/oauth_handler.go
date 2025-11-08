@@ -179,17 +179,28 @@ func (h *OAuthHandler) handleAuthorizationCodeGrant(w http.ResponseWriter, r *ht
 	clientID := r.FormValue("client_id")
 	clientSecret := r.FormValue("client_secret")
 	redirectURI := r.FormValue("redirect_uri")
+	codeVerifier := r.FormValue("code_verifier")
 
-	if code == "" || clientID == "" || clientSecret == "" {
+	if code == "" || clientID == "" {
 		respondError(w, http.StatusBadRequest, "invalid_request", "Missing required parameters")
 		return
 	}
 
 	ctx := context.Background()
 	client, err := h.clientRepo.FindByClientID(ctx, clientID)
-	if err != nil || client.ClientSecret != clientSecret {
-		respondError(w, http.StatusUnauthorized, "invalid_client", "Invalid client credentials")
+	if err != nil {
+		respondError(w, http.StatusUnauthorized, "invalid_client", "Invalid client")
 		return
+	}
+
+	// For confidential clients, verify client_secret
+	// For public clients (PKCE), verify code_verifier instead
+	if client.ClientSecret != "" {
+		// Confidential client - require client_secret
+		if clientSecret == "" || client.ClientSecret != clientSecret {
+			respondError(w, http.StatusUnauthorized, "invalid_client", "Invalid client credentials")
+			return
+		}
 	}
 
 	authCode, err := h.authCodeRepo.FindByCode(ctx, code)
@@ -207,6 +218,18 @@ func (h *OAuthHandler) handleAuthorizationCodeGrant(w http.ResponseWriter, r *ht
 	if authCode.ClientID != clientID || authCode.RedirectURI != redirectURI {
 		respondError(w, http.StatusBadRequest, "invalid_grant", "Code mismatch")
 		return
+	}
+
+	// Verify PKCE if code_challenge was used
+	if authCode.CodeChallenge != "" {
+		if codeVerifier == "" {
+			respondError(w, http.StatusBadRequest, "invalid_request", "code_verifier required for PKCE")
+			return
+		}
+		if !utils.VerifyPKCE(codeVerifier, authCode.CodeChallenge, authCode.ChallengeMethod) {
+			respondError(w, http.StatusBadRequest, "invalid_grant", "Invalid code_verifier")
+			return
+		}
 	}
 
 	h.authCodeRepo.Delete(ctx, code)
