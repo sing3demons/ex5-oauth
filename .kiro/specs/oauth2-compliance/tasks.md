@@ -83,7 +83,7 @@
     - Generate access token with scope claim
     - _Requirements: 1.2_
 
-- [ ] 7. Update UserInfo Endpoint
+- [x] 7. Update UserInfo Endpoint
   - Filter returned claims based on access token scope
   - Return only sub claim if only openid scope
   - Include email claims only if email scope present
