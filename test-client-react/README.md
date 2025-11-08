@@ -147,6 +147,8 @@ Open http://localhost:3000
             └─────────────────┘
 ```
 
+**Note**: This demo uses a simplified login flow (direct token request) for ease of testing. In production, you would use the full OAuth Authorization Code flow with redirects.
+
 ## Token Exchange Flow
 
 ```

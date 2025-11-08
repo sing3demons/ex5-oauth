@@ -47,32 +47,16 @@ export function SSOProvider({ children }) {
     localStorage.setItem('sso_users', JSON.stringify(users))
   }, [users])
 
-  // Login to an app (first time - OAuth flow)
+  // Login to an app (simplified - direct token request)
   const login = async (appId, email, password) => {
     try {
       const client = CLIENTS[appId]
       
-      // Step 1: Start OAuth authorization
-      const authUrl = `${OAUTH_SERVER}/oauth/authorize?` + new URLSearchParams({
-        response_type: 'code',
-        client_id: client.client_id,
-        redirect_uri: client.redirect_uri,
-        scope: 'openid profile email',
-        state: Math.random().toString(36).substring(7),
-        response_mode: 'json' // Request JSON response
-      })
-
-      const authResponse = await fetch(authUrl)
-      const authData = await authResponse.text()
+      // For demo purposes, we'll use a simplified flow:
+      // Direct login to get tokens (bypassing full OAuth flow)
       
-      // Extract session_id from redirect
-      const sessionMatch = authData.match(/session_id=([^"&]+)/)
-      if (!sessionMatch) {
-        throw new Error('Failed to get session ID')
-      }
-      const sessionId = sessionMatch[1]
-
-      // Step 2: Login with credentials
+      // Step 1: Login and get tokens directly
+      // Note: This is a simplified demo flow. In production, you'd use full OAuth flow.
       const loginResponse = await fetch(`${OAUTH_SERVER}/auth/login`, {
         method: 'POST',
         headers: {
@@ -81,8 +65,7 @@ export function SSOProvider({ children }) {
         },
         body: JSON.stringify({
           email,
-          password,
-          session_id: sessionId
+          password
         })
       })
 
@@ -92,30 +75,17 @@ export function SSOProvider({ children }) {
       }
 
       const loginData = await loginResponse.json()
-      const code = loginData.code
-
-      // Step 3: Exchange code for tokens
-      const tokenResponse = await fetch(`${OAUTH_SERVER}/oauth/token`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded'
-        },
-        body: new URLSearchParams({
-          grant_type: 'authorization_code',
-          code: code,
-          client_id: client.client_id,
-          client_secret: client.client_secret,
-          redirect_uri: client.redirect_uri
-        })
-      })
-
-      if (!tokenResponse.ok) {
-        throw new Error('Token exchange failed')
+      
+      // loginData contains access_token, refresh_token, etc.
+      const tokenData = {
+        access_token: loginData.access_token,
+        token_type: loginData.token_type || 'Bearer',
+        expires_in: loginData.expires_in,
+        refresh_token: loginData.refresh_token,
+        scope: loginData.scope || 'openid profile email'
       }
 
-      const tokenData = await tokenResponse.json()
-
-      // Step 4: Get user info
+      // Get user info
       const userInfo = await getUserInfo(tokenData.access_token)
 
       // Store tokens and user info

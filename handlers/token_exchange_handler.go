@@ -89,7 +89,7 @@ func (h *TokenExchangeHandler) HandleTokenExchange(w http.ResponseWriter, r *htt
 		return
 	}
 
-	var userID, email, name string
+	var userID, email, name, scope string
 	if utils.IsJWE(req.SubjectToken) {
 		claims, err := utils.ValidateJWE(req.SubjectToken, h.config.PrivateKey)
 		if err != nil {
@@ -99,6 +99,7 @@ func (h *TokenExchangeHandler) HandleTokenExchange(w http.ResponseWriter, r *htt
 		userID = claims.UserID
 		email = claims.Email
 		name = claims.Name
+		scope = claims.Scope
 	} else if utils.IsJWT(req.SubjectToken) {
 		claims, err := utils.ValidateToken(req.SubjectToken, h.config.PublicKey)
 		if err != nil {
@@ -108,11 +109,13 @@ func (h *TokenExchangeHandler) HandleTokenExchange(w http.ResponseWriter, r *htt
 		userID = claims.UserID
 		email = claims.Email
 		name = claims.Name
+		scope = claims.Scope
 	} else {
 		respondError(w, http.StatusBadRequest, "invalid_grant", "Invalid token format")
 		return
 	}
 
+	// Get user from database to ensure user exists and get latest info
 	user, err := h.userRepo.FindByID(ctx, userID)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "server_error", "Failed to find user")
@@ -127,15 +130,14 @@ func (h *TokenExchangeHandler) HandleTokenExchange(w http.ResponseWriter, r *htt
 	}
 
 	// Validate and normalize scope
-	scope := req.Scope
-	if scope == "" {
-		scope = utils.GetDefaultScope()
-	} else {
-		if !utils.ValidateScope(scope) {
+	if req.Scope != "" {
+		if !utils.ValidateScope(req.Scope) {
 			respondError(w, http.StatusBadRequest, "invalid_scope", "Invalid scope requested")
 			return
 		}
-		scope = utils.NormalizeScope(scope)
+		scope = utils.NormalizeScope(req.Scope)
+	} else if scope == "" {
+		scope = utils.GetDefaultScope()
 	}
 
 	var accessToken, refreshToken, idToken string

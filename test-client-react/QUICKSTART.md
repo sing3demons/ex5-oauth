@@ -73,8 +73,18 @@ npm run dev
 
 ## 🔍 Behind the Scenes
 
+**App A Login:**
 ```javascript
-// App B automatically does this:
+POST /auth/login
+{
+  email: "test@example.com",
+  password: "password123"
+}
+// Response: { access_token, refresh_token, ... }
+```
+
+**App B Token Exchange (SSO!):**
+```javascript
 POST /oauth/token
 {
   grant_type: "urn:ietf:params:oauth:grant-type:token-exchange",
@@ -83,7 +93,6 @@ POST /oauth/token
   client_id: "app-b-client-id",
   client_secret: "app-b-secret"
 }
-
 // Response: New token for App B!
 {
   access_token: "NEW_TOKEN_FOR_APP_B",

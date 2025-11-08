@@ -198,13 +198,36 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	ctx := context.Background()
 	user, err := h.userRepo.FindByEmail(ctx, req.Email)
 	if err != nil {
-		respondError(w, http.StatusUnauthorized, "invalid_credentials", "Invalid email or password")
-		return
-	}
+		// Auto-register user if not found
+		hashedPassword, err := utils.HashPassword(req.Password)
+		if err != nil {
+			respondError(w, http.StatusInternalServerError, "server_error", "Failed to hash password")
+			return
+		}
 
-	if !utils.CheckPasswordHash(req.Password, user.Password) {
-		respondError(w, http.StatusUnauthorized, "invalid_credentials", "Invalid email or password")
-		return
+		newUser := &models.User{
+			Email:    req.Email,
+			Password: hashedPassword,
+			Name:     req.Email, // Use email as name by default
+		}
+
+		if err := h.userRepo.Create(ctx, newUser); err != nil {
+			respondError(w, http.StatusInternalServerError, "server_error", "Failed to create user")
+			return
+		}
+
+		// Fetch the user back to get the generated ID
+		user, err = h.userRepo.FindByEmail(ctx, req.Email)
+		if err != nil {
+			respondError(w, http.StatusInternalServerError, "server_error", "Failed to retrieve created user")
+			return
+		}
+	} else {
+		// User exists, verify password
+		if !utils.CheckPasswordHash(req.Password, user.Password) {
+			respondError(w, http.StatusUnauthorized, "invalid_credentials", "Invalid email or password")
+			return
+		}
 	}
 
 	if req.SessionID != "" {
