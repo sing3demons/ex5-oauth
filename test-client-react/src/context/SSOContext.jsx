@@ -5,23 +5,24 @@ const SSOContext = createContext()
 const OAUTH_SERVER = 'http://localhost:8080'
 
 // Client configurations
+// All apps share the same client credentials for this demo
+const SHARED_CLIENT = {
+  client_id: 'qE5EjnNKrC6hRhYbC6q9VVND-rkN8Lah',
+  client_secret: 'mfsw5Es8V0bSYrKYs3JCLlBYnIN322q2RlycNo3lLASnync03C2zYcDxXlLjwSXe',
+  redirect_uri: 'http://localhost:3000/callback'
+}
+
 const CLIENTS = {
   'app-a': {
-    client_id: 'app-a-client-id',
-    client_secret: 'app-a-secret',
-    redirect_uri: 'http://localhost:3000/callback',
+    ...SHARED_CLIENT,
     name: 'App A (E-commerce)'
   },
   'app-b': {
-    client_id: 'app-b-client-id',
-    client_secret: 'app-b-secret',
-    redirect_uri: 'http://localhost:3000/callback',
+    ...SHARED_CLIENT,
     name: 'App B (Analytics)'
   },
   'app-c': {
-    client_id: 'app-c-client-id',
-    client_secret: 'app-c-secret',
-    redirect_uri: 'http://localhost:3000/callback',
+    ...SHARED_CLIENT,
     name: 'App C (Chat)'
   }
 }
