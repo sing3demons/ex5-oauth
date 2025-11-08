@@ -126,9 +126,16 @@ func (h *TokenExchangeHandler) HandleTokenExchange(w http.ResponseWriter, r *htt
 		name = user.Name
 	}
 
+	// Validate and normalize scope
 	scope := req.Scope
 	if scope == "" {
-		scope = "openid profile email"
+		scope = utils.GetDefaultScope()
+	} else {
+		if !utils.ValidateScope(scope) {
+			respondError(w, http.StatusBadRequest, "invalid_scope", "Invalid scope requested")
+			return
+		}
+		scope = utils.NormalizeScope(scope)
 	}
 
 	var accessToken, refreshToken, idToken string

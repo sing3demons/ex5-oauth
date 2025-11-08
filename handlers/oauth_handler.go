@@ -78,6 +78,23 @@ func (h *OAuthHandler) Authorize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Validate and normalize scope
+	if scope == "" {
+		scope = utils.GetDefaultScope()
+	} else {
+		if !utils.ValidateScope(scope) {
+			respondError(w, http.StatusBadRequest, "invalid_scope", "Invalid scope requested")
+			return
+		}
+		scope = utils.NormalizeScope(scope)
+	}
+
+	// OIDC requires openid scope
+	if !utils.RequiresOpenID(scope) {
+		respondError(w, http.StatusBadRequest, "invalid_scope", "OpenID scope is required")
+		return
+	}
+
 	sessionID, err := utils.GenerateRandomString(32)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "server_error", "Failed to generate session")
@@ -215,6 +232,7 @@ func (h *OAuthHandler) handleRefreshTokenGrant(w http.ResponseWriter, r *http.Re
 	refreshToken := r.FormValue("refresh_token")
 	clientID := r.FormValue("client_id")
 	clientSecret := r.FormValue("client_secret")
+	requestedScope := r.FormValue("scope")
 
 	if refreshToken == "" || clientID == "" || clientSecret == "" {
 		respondError(w, http.StatusBadRequest, "invalid_request", "Missing required parameters")
@@ -240,11 +258,23 @@ func (h *OAuthHandler) handleRefreshTokenGrant(w http.ResponseWriter, r *http.Re
 		return
 	}
 
+	// Use requested scope or default
+	scope := requestedScope
+	if scope == "" {
+		scope = utils.GetDefaultScope()
+	} else {
+		if !utils.ValidateScope(scope) {
+			respondError(w, http.StatusBadRequest, "invalid_scope", "Invalid scope requested")
+			return
+		}
+		scope = utils.NormalizeScope(scope)
+	}
+
 	accessToken, err := utils.GenerateAccessToken(
 		user.ID,
 		user.Email,
 		user.Name,
-		"openid profile email",
+		scope,
 		h.config.PrivateKey,
 		h.config.AccessTokenExpiry,
 	)
@@ -264,7 +294,7 @@ func (h *OAuthHandler) handleRefreshTokenGrant(w http.ResponseWriter, r *http.Re
 		TokenType:    "Bearer",
 		ExpiresIn:    h.config.AccessTokenExpiry,
 		RefreshToken: newRefreshToken,
-		Scope:        "openid profile email",
+		Scope:        scope,
 	}
 
 	respondJSON(w, http.StatusOK, response)
@@ -273,7 +303,7 @@ func (h *OAuthHandler) handleRefreshTokenGrant(w http.ResponseWriter, r *http.Re
 func (h *OAuthHandler) handleClientCredentialsGrant(w http.ResponseWriter, r *http.Request) {
 	clientID := r.FormValue("client_id")
 	clientSecret := r.FormValue("client_secret")
-	scope := r.FormValue("scope")
+	requestedScope := r.FormValue("scope")
 
 	if clientID == "" || clientSecret == "" {
 		respondError(w, http.StatusBadRequest, "invalid_request", "Missing required parameters")
@@ -285,6 +315,18 @@ func (h *OAuthHandler) handleClientCredentialsGrant(w http.ResponseWriter, r *ht
 	if err != nil || client.ClientSecret != clientSecret {
 		respondError(w, http.StatusUnauthorized, "invalid_client", "Invalid client credentials")
 		return
+	}
+
+	// Validate and normalize scope
+	scope := requestedScope
+	if scope == "" {
+		scope = "openid"
+	} else {
+		if !utils.ValidateScope(scope) {
+			respondError(w, http.StatusBadRequest, "invalid_scope", "Invalid scope requested")
+			return
+		}
+		scope = utils.NormalizeScope(scope)
 	}
 
 	accessToken, err := utils.GenerateAccessToken(
@@ -318,16 +360,46 @@ func (h *OAuthHandler) UserInfo(w http.ResponseWriter, r *http.Request) {
 	}
 
 	tokenString := strings.TrimPrefix(authHeader, "Bearer ")
-	claims, err := utils.ValidateToken(tokenString, h.config.PublicKey)
-	if err != nil {
-		respondError(w, http.StatusUnauthorized, "invalid_token", "Invalid or expired token")
-		return
+	
+	var scope string
+	var userID, email, name string
+
+	// Support both JWT and JWE tokens
+	if utils.IsJWE(tokenString) {
+		jweClaims, err := utils.ValidateJWE(tokenString, h.config.PrivateKey)
+		if err != nil {
+			respondError(w, http.StatusUnauthorized, "invalid_token", "Invalid or expired token")
+			return
+		}
+		userID = jweClaims.UserID
+		email = jweClaims.Email
+		name = jweClaims.Name
+		scope = jweClaims.Scope
+	} else {
+		jwtClaims, err := utils.ValidateToken(tokenString, h.config.PublicKey)
+		if err != nil {
+			respondError(w, http.StatusUnauthorized, "invalid_token", "Invalid or expired token")
+			return
+		}
+		userID = jwtClaims.UserID
+		email = jwtClaims.Email
+		name = jwtClaims.Name
+		scope = jwtClaims.Scope
 	}
 
+	// Build userInfo based on scope
 	userInfo := models.UserInfo{
-		Sub:   claims.UserID,
-		Email: claims.Email,
-		Name:  claims.Name,
+		Sub: userID,
+	}
+
+	// Only include email if email scope is present
+	if utils.ScopeIncludesEmail(scope) {
+		userInfo.Email = email
+	}
+
+	// Only include name if profile scope is present
+	if utils.ScopeIncludesProfile(scope) {
+		userInfo.Name = name
 	}
 
 	respondJSON(w, http.StatusOK, userInfo)
