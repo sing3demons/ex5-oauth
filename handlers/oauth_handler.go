@@ -166,6 +166,9 @@ func (h *OAuthHandler) Token(w http.ResponseWriter, r *http.Request) {
 		h.handleRefreshTokenGrant(w, r)
 	case "client_credentials":
 		h.handleClientCredentialsGrant(w, r)
+	case "urn:ietf:params:oauth:grant-type:token-exchange":
+		// Delegate to token exchange handler
+		h.handleTokenExchange(w, r)
 	default:
 		respondError(w, http.StatusBadRequest, "unsupported_grant_type", "Grant type not supported")
 	}
@@ -454,4 +457,10 @@ func (h *OAuthHandler) UserInfo(w http.ResponseWriter, r *http.Request) {
 	filteredClaims := utils.FilterClaimsForUser(user, scope)
 	
 	respondJSON(w, http.StatusOK, filteredClaims)
+}
+
+func (h *OAuthHandler) handleTokenExchange(w http.ResponseWriter, r *http.Request) {
+	// Create a temporary TokenExchangeHandler to handle the request
+	tokenExchangeHandler := NewTokenExchangeHandler(h.userRepo, h.clientRepo, h.config)
+	tokenExchangeHandler.HandleTokenExchange(w, r)
 }
