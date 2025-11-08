@@ -3,11 +3,15 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"html/template"
 	"net/http"
+	"net/url"
 	"oauth2-server/config"
 	"oauth2-server/models"
 	"oauth2-server/repository"
 	"oauth2-server/utils"
+	"strings"
+	"time"
 
 	"go.mongodb.org/mongo-driver/mongo"
 )
@@ -16,6 +20,7 @@ type AuthHandler struct {
 	userRepo     *repository.UserRepository
 	clientRepo   *repository.ClientRepository
 	authCodeRepo *repository.AuthCodeRepository
+	sessionRepo  *repository.SessionRepository
 	config       *config.Config
 }
 
@@ -23,12 +28,14 @@ func NewAuthHandler(
 	userRepo *repository.UserRepository,
 	clientRepo *repository.ClientRepository,
 	authCodeRepo *repository.AuthCodeRepository,
+	sessionRepo *repository.SessionRepository,
 	cfg *config.Config,
 ) *AuthHandler {
 	return &AuthHandler{
 		userRepo:     userRepo,
 		clientRepo:   clientRepo,
 		authCodeRepo: authCodeRepo,
+		sessionRepo:  sessionRepo,
 		config:       cfg,
 	}
 }

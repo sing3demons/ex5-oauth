@@ -1,0 +1,27 @@
+{
+  "service": "oauth2-server",
+  "version": "1.0.0",
+  "server": {
+    "port": "8080"
+  },
+  "database": {
+    "mongodb_uri": "mongodb://localhost:27017",
+    "database_name": "oauth2_db"
+  },
+  "jwt": {
+    "access_token_expiry": 3600,
+    "refresh_token_expiry": 604800
+  },
+  "logging": {
+    "summary": {
+      "path": "./logs/summary/",
+      "console": true,
+      "file": true
+    },
+    "detail": {
+      "path": "./logs/detail/",
+      "console": true,
+      "file": true
+    }
+  }
+}

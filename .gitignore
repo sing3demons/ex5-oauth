@@ -25,6 +25,12 @@ go.work
 keys/
 *.pem
 
+# Logs
+logs/
+*.log
+test_logs/
+test_logs_file_only/
+
 # IDE
 .vscode/
 .idea/

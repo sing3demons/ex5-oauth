@@ -83,6 +83,16 @@ mongod
 go run main.go
 ```
 
+## Logging
+
+The server includes comprehensive structured logging with:
+- Detail logs for individual operations
+- Summary logs for transaction results
+- Data masking for sensitive information
+- File and console output support
+
+See [logger/README.md](logger/README.md) for detailed documentation.
+
 ## API Endpoints
 
 ### Authentication
