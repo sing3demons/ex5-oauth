@@ -271,6 +271,26 @@ curl -X GET http://localhost:8080/oauth/userinfo \
 - Redirect URI validation
 - Public key distribution via JWKS endpoint
 
+## Testing
+
+The project includes comprehensive unit and integration tests.
+
+### Quick Test
+
+```bash
+# Run unit tests only (fast, no MongoDB required)
+go test ./...
+```
+
+### Full Test Suite
+
+```bash
+# Run all tests including integration tests (requires MongoDB)
+go test -tags=integration ./... -v
+```
+
+For detailed testing instructions, see [TESTING.md](TESTING.md).
+
 ## License
 
 MIT
