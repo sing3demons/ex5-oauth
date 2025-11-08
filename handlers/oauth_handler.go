@@ -47,6 +47,12 @@ func (h *OAuthHandler) Authorize(w http.ResponseWriter, r *http.Request) {
 	codeChallenge := r.URL.Query().Get("code_challenge")
 	challengeMethod := r.URL.Query().Get("code_challenge_method")
 
+	// Validate nonce length (max 512 characters as per OIDC spec)
+	if len(nonce) > 512 {
+		respondError(w, http.StatusBadRequest, "invalid_request", "Nonce exceeds maximum length of 512 characters")
+		return
+	}
+
 	if responseType != "code" {
 		respondError(w, http.StatusBadRequest, "unsupported_response_type", "Only 'code' response type is supported")
 		return
@@ -85,11 +91,18 @@ func (h *OAuthHandler) Authorize(w http.ResponseWriter, r *http.Request) {
 	if scope == "" {
 		scope = utils.GetDefaultScope()
 	} else {
-		if !utils.ValidateScope(scope) {
-			respondError(w, http.StatusBadRequest, "invalid_scope", "Invalid scope requested")
+		// Validate scope format and existence
+		if err := utils.GlobalScopeValidator.ValidateScope(scope); err != nil {
+			respondError(w, http.StatusBadRequest, "invalid_scope", err.Error())
 			return
 		}
 		scope = utils.NormalizeScope(scope)
+	}
+
+	// Validate scopes against client's AllowedScopes
+	if err := utils.GlobalScopeValidator.ValidateScopeAgainstAllowed(scope, client.AllowedScopes); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid_scope", err.Error())
+		return
 	}
 
 	// OIDC requires openid scope

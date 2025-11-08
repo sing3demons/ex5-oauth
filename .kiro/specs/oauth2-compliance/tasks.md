@@ -47,8 +47,8 @@
   - Ensure email scope includes email and email_verified
   - _Requirements: 1.3, 1.6_
 
-- [ ] 5. Update Authorization Handler
-  - [ ] 5.1 Add scope validation in authorization endpoint
+- [x] 5. Update Authorization Handler
+  - [x] 5.1 Add scope validation in authorization endpoint
     - Validate requested scopes using scope validator
     - Check scopes against client's AllowedScopes
     - Return invalid_scope error for invalid/unauthorized scopes
@@ -56,7 +56,7 @@
     - Require openid scope for OIDC
     - _Requirements: 1.1, 1.2_
 
-  - [ ] 5.2 Store nonce in authorization code
+  - [x] 5.2 Store nonce in authorization code
     - Extract nonce parameter from authorization request
     - Store nonce with authorization code
     - Support nonce up to 512 characters
