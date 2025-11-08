@@ -1,17 +1,15 @@
 package utils
 
 import (
+	"oauth2-server/models"
 	"strings"
 )
 
-// ValidScopes defines all supported scopes
-var ValidScopes = map[string]bool{
-	"openid":  true,
-	"profile": true,
-	"email":   true,
-	"phone":   true,
-	"address": true,
-	"offline_access": true, // for refresh token
+// GlobalScopeRegistry is the global scope registry instance
+var GlobalScopeRegistry *models.ScopeRegistry
+
+func init() {
+	GlobalScopeRegistry = models.NewScopeRegistry()
 }
 
 // ValidateScope checks if requested scopes are valid
@@ -22,7 +20,22 @@ func ValidateScope(scope string) bool {
 
 	scopes := strings.Split(scope, " ")
 	for _, s := range scopes {
-		if s != "" && !ValidScopes[s] {
+		if s != "" && !GlobalScopeRegistry.IsValidScope(s) {
+			return false
+		}
+	}
+	return true
+}
+
+// ValidateScopeName checks if a scope name is valid format
+// Allows alphanumeric, underscore, hyphen, colon, period
+func ValidateScopeName(name string) bool {
+	if name == "" {
+		return false
+	}
+	for _, ch := range name {
+		if !((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
+			(ch >= '0' && ch <= '9') || ch == '_' || ch == '-' || ch == ':' || ch == '.') {
 			return false
 		}
 	}
@@ -41,13 +54,39 @@ func NormalizeScope(scope string) string {
 
 	for _, s := range scopes {
 		s = strings.TrimSpace(s)
-		if s != "" && ValidScopes[s] && !seen[s] {
+		if s != "" && GlobalScopeRegistry.IsValidScope(s) && !seen[s] {
 			seen[s] = true
 			normalized = append(normalized, s)
 		}
 	}
 
 	return strings.Join(normalized, " ")
+}
+
+// ValidateScopeAgainstAllowed checks if requested scopes are within allowed scopes
+// Returns (isValid, unauthorizedScopes)
+func ValidateScopeAgainstAllowed(requested string, allowed []string) (bool, []string) {
+	if len(allowed) == 0 {
+		// No restrictions - all scopes allowed
+		return true, nil
+	}
+
+	allowedMap := make(map[string]bool)
+	for _, s := range allowed {
+		allowedMap[s] = true
+	}
+
+	requestedScopes := strings.Split(requested, " ")
+	var unauthorized []string
+
+	for _, s := range requestedScopes {
+		s = strings.TrimSpace(s)
+		if s != "" && !allowedMap[s] {
+			unauthorized = append(unauthorized, s)
+		}
+	}
+
+	return len(unauthorized) == 0, unauthorized
 }
 
 // HasScope checks if a scope string contains a specific scope
