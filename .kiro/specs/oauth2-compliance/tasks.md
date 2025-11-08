@@ -62,22 +62,22 @@
     - Support nonce up to 512 characters
     - _Requirements: 1.5_
 
-- [ ] 6. Update Token Handler
-  - [ ] 6.1 Update authorization code grant
+- [x] 6. Update Token Handler
+  - [x] 6.1 Update authorization code grant
     - Validate scopes from authorization code
     - Generate access token with scope claim only (no user claims)
     - Generate ID token with user claims based on scopes using ClaimFilter
     - Include nonce in ID token if present
     - _Requirements: 1.3, 1.6_
 
-  - [ ] 6.2 Update refresh token grant
+  - [x] 6.2 Update refresh token grant
     - Support scope parameter for scope downgrade
     - Validate requested scopes against original scopes
     - Use original scopes if no scope parameter provided
     - Return invalid_scope error if trying to escalate scopes
     - _Requirements: 1.4_
 
-  - [ ] 6.3 Update client credentials grant
+  - [x] 6.3 Update client credentials grant
     - Validate requested scopes against client's AllowedScopes
     - Use minimal default scope if none provided
     - Generate access token with scope claim

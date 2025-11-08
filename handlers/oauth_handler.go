@@ -214,6 +214,9 @@ func (h *OAuthHandler) handleAuthorizationCodeGrant(w http.ResponseWriter, r *ht
 		return
 	}
 
+	// Validate scopes from authorization code (already validated during authorization)
+	// Scopes are stored in authCode.Scope
+	
 	// Generate access token with scope claim only (no user claims)
 	accessToken, err := utils.GenerateAccessToken(
 		user.ID,
@@ -234,7 +237,8 @@ func (h *OAuthHandler) handleAuthorizationCodeGrant(w http.ResponseWriter, r *ht
 		return
 	}
 
-	// Generate ID token with filtered claims based on scopes
+	// Generate ID token with user claims based on scopes using ClaimFilter
+	// Include nonce in ID token if present (for replay protection)
 	userClaims := utils.GetIDTokenClaimsForUser(user, authCode.Scope, authCode.Nonce)
 	idToken, err := utils.GenerateIDToken(
 		user.ID,
@@ -290,20 +294,21 @@ func (h *OAuthHandler) handleRefreshTokenGrant(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	// Use requested scope or original scope from refresh token
+	// Support scope parameter for scope downgrade
 	scope := requestedScope
 	if scope == "" {
-		// No scope requested, use original scope from refresh token
+		// Use original scopes if no scope parameter provided
 		scope = claims.Scope
 	} else {
-		// Validate requested scope
-		if !utils.ValidateScope(scope) {
-			respondError(w, http.StatusBadRequest, "invalid_scope", "Invalid scope requested")
+		// Validate requested scope format and existence
+		if err := utils.GlobalScopeValidator.ValidateScope(scope); err != nil {
+			respondError(w, http.StatusBadRequest, "invalid_scope", err.Error())
 			return
 		}
 		scope = utils.NormalizeScope(scope)
 		
-		// Validate scope downgrade - ensure requested scopes are subset of original
+		// Validate requested scopes against original scopes (scope downgrade validation)
+		// Return invalid_scope error if trying to escalate scopes
 		if err := utils.ValidateScopeDowngrade(scope, claims.Scope); err != nil {
 			respondError(w, http.StatusBadRequest, "invalid_scope", err.Error())
 			return
@@ -357,18 +362,26 @@ func (h *OAuthHandler) handleClientCredentialsGrant(w http.ResponseWriter, r *ht
 		return
 	}
 
-	// Validate and normalize scope
+	// Use minimal default scope if none provided
 	scope := requestedScope
 	if scope == "" {
 		scope = "openid"
 	} else {
-		if !utils.ValidateScope(scope) {
-			respondError(w, http.StatusBadRequest, "invalid_scope", "Invalid scope requested")
+		// Validate requested scope format and existence
+		if err := utils.GlobalScopeValidator.ValidateScope(scope); err != nil {
+			respondError(w, http.StatusBadRequest, "invalid_scope", err.Error())
 			return
 		}
 		scope = utils.NormalizeScope(scope)
 	}
+	
+	// Validate requested scopes against client's AllowedScopes
+	if err := utils.GlobalScopeValidator.ValidateScopeAgainstAllowed(scope, client.AllowedScopes); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid_scope", err.Error())
+		return
+	}
 
+	// Generate access token with scope claim
 	accessToken, err := utils.GenerateAccessToken(
 		clientID,
 		"",
