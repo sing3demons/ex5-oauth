@@ -72,20 +72,34 @@ func applyMaskingRecursive(data interface{}, pathParts []string, maskType Maskin
 			}
 		} else if val, exists := v[currentPart]; exists {
 			if len(remainingParts) == 0 {
-				v[currentPart] = maskValue(val, maskType)
+				// Check if value is an array and isArray flag is set
+				if arr, ok := val.([]interface{}); ok && isArray {
+					// Mask each element in the array
+					for i := range arr {
+						arr[i] = maskValue(arr[i], maskType)
+					}
+					v[currentPart] = arr
+				} else {
+					v[currentPart] = maskValue(val, maskType)
+				}
 			} else {
-				applyMaskingRecursive(val, remainingParts, maskType, isArray)
+				// Continue traversing
+				if arr, ok := val.([]interface{}); ok && isArray {
+					// Apply masking to each element in array
+					for i := range arr {
+						applyMaskingRecursive(arr[i], remainingParts, maskType, isArray)
+					}
+				} else {
+					applyMaskingRecursive(val, remainingParts, maskType, isArray)
+				}
 			}
 		}
 
 	case []interface{}:
-		if isArray {
-			for i := range v {
-				if len(remainingParts) == 0 {
-					v[i] = maskValue(v[i], maskType)
-				} else {
-					applyMaskingRecursive(v[i], pathParts, maskType, isArray)
-				}
+		// This handles when we're already inside an array
+		for i := range v {
+			if len(pathParts) > 0 {
+				applyMaskingRecursive(v[i], pathParts, maskType, isArray)
 			}
 		}
 	}
@@ -118,6 +132,9 @@ func maskValue(value interface{}, maskType MaskingType) interface{} {
 
 func maskPartial(s string) string {
 	length := len(s)
+	if length == 0 {
+		return ""
+	}
 	if length <= 3 {
 		return "***"
 	}
@@ -136,14 +153,19 @@ func maskEmail(email string) string {
 	username := parts[0]
 	domain := parts[1]
 	
-	if len(username) <= 1 {
+	if len(username) == 0 {
 		return "*@" + domain
 	}
-	if len(username) <= 3 {
-		return string(username[0]) + "***@" + domain
+	if len(username) == 1 {
+		return "*@" + domain
 	}
 	
-	return string(username[0]) + strings.Repeat("*", len(username)-1) + "@" + domain
+	// Mask all characters except the first one, minimum 3 stars
+	maskLength := len(username) - 1
+	if maskLength < 3 {
+		maskLength = 3
+	}
+	return string(username[0]) + strings.Repeat("*", maskLength) + "@" + domain
 }
 
 func maskCard(card string) string {

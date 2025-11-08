@@ -36,7 +36,7 @@ func TestMaskEmail(t *testing.T) {
 		{"Normal email", "user@example.com", "u***@example.com"},
 		{"Short username", "ab@example.com", "a***@example.com"},
 		{"Single char username", "a@example.com", "*@example.com"},
-		{"Long username", "verylongusername@example.com", "v*******************@example.com"},
+		{"Long username", "verylongusername@example.com", "v***************@example.com"},
 		{"Invalid email", "notanemail", "***"},
 	}
 

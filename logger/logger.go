@@ -291,13 +291,8 @@ func (l *Logger) Error(action, message string, opts ...LogOption) {
 func (l *Logger) Flush(statusCode int, message string) {
 	duration := time.Since(l.startTime).Milliseconds()
 
-	// Merge accumulated metadata with summary data
-	summaryMetadata := make(map[string]interface{})
-	for k, v := range l.metadata {
-		summaryMetadata[k] = v
-	}
-	summaryMetadata["detailLogCount"] = len(l.detailLogs)
-	summaryMetadata["duration"] = duration
+	// Use accumulated metadata
+	summaryMetadata := l.metadata
 
 	log := DetailLog{
 		Level:         LevelInfo,
@@ -318,13 +313,8 @@ func (l *Logger) Flush(statusCode int, message string) {
 func (l *Logger) FlushError(statusCode int, message string) {
 	duration := time.Since(l.startTime).Milliseconds()
 
-	// Merge accumulated metadata with summary data
-	summaryMetadata := make(map[string]interface{})
-	for k, v := range l.metadata {
-		summaryMetadata[k] = v
-	}
-	summaryMetadata["detailLogCount"] = len(l.detailLogs)
-	summaryMetadata["duration"] = duration
+	// Use accumulated metadata
+	summaryMetadata := l.metadata
 
 	log := DetailLog{
 		Level:         LevelError,

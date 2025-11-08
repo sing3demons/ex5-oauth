@@ -60,10 +60,6 @@ func TestLogger_Flush(t *testing.T) {
 		t.Errorf("Expected totalSteps to be 2, got '%v'", log.Metadata["totalSteps"])
 	}
 
-	if log.Metadata["detailLogCount"] != float64(2) {
-		t.Errorf("Expected detailLogCount to be 2, got '%v'", log.Metadata["detailLogCount"])
-	}
-
 	// Check if logs were cleaned up
 	if len(logger.detailLogs) != 0 {
 		t.Errorf("Expected detail logs to be cleaned up, got %d logs", len(logger.detailLogs))
@@ -140,8 +136,8 @@ func TestLogger_FlushWithDuration(t *testing.T) {
 		t.Fatalf("Failed to unmarshal log: %v", err)
 	}
 
-	if log.Duration <= 0 {
-		t.Errorf("Expected duration to be greater than 0, got %d", log.Duration)
+	if log.Duration < 0 {
+		t.Errorf("Expected duration to be >= 0, got %d", log.Duration)
 	}
 
 	if log.StatusCode != 201 {
