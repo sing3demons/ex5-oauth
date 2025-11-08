@@ -30,6 +30,10 @@ func NewClaimFilter(registry *models.ScopeRegistry) ClaimFilter {
 var GlobalClaimFilter ClaimFilter
 
 func init() {
+	// Ensure GlobalScopeRegistry is initialized
+	if GlobalScopeRegistry == nil {
+		GlobalScopeRegistry = models.NewScopeRegistry()
+	}
 	GlobalClaimFilter = NewClaimFilter(GlobalScopeRegistry)
 }
 

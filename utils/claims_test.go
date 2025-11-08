@@ -118,6 +118,14 @@ func TestClaimFilter_GetIDTokenClaims(t *testing.T) {
 }
 
 func TestGlobalClaimFilter(t *testing.T) {
+	// Ensure global instances are initialized
+	if GlobalScopeRegistry == nil {
+		t.Fatal("GlobalScopeRegistry is not initialized")
+	}
+	if GlobalClaimFilter == nil {
+		t.Fatal("GlobalClaimFilter is not initialized")
+	}
+
 	user := &models.User{
 		ID:    "user123",
 		Email: "test@example.com",
