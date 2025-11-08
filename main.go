@@ -19,6 +19,31 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
+// CORS middleware
+func corsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Allow requests from React dev server
+		origin := r.Header.Get("Origin")
+		if origin == "" {
+			origin = "*"
+		}
+		
+		w.Header().Set("Access-Control-Allow-Origin", origin)
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept, X-Requested-With")
+		w.Header().Set("Access-Control-Allow-Credentials", "true")
+		w.Header().Set("Access-Control-Max-Age", "3600")
+
+		// Handle preflight requests
+		if r.Method == "OPTIONS" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+
 func main() {
 	cfg := config.Load()
 
@@ -56,22 +81,25 @@ func main() {
 
 	r := mux.NewRouter()
 
+	// Add CORS middleware
+	r.Use(corsMiddleware)
+
 	r.HandleFunc("/.well-known/openid-configuration", discoveryHandler.WellKnown).Methods("GET")
 	r.HandleFunc("/.well-known/jwks.json", jwksHandler.JWKS).Methods("GET")
 
 	r.HandleFunc("/auth/register", authHandler.ShowRegister).Methods("GET")
-	r.HandleFunc("/auth/register", authHandler.Register).Methods("POST")
+	r.HandleFunc("/auth/register", authHandler.Register).Methods("POST", "OPTIONS")
 	r.HandleFunc("/auth/login", authHandler.ShowLogin).Methods("GET")
-	r.HandleFunc("/auth/login", authHandler.Login).Methods("POST")
+	r.HandleFunc("/auth/login", authHandler.Login).Methods("POST", "OPTIONS")
 
-	r.HandleFunc("/oauth/authorize", oauthHandler.Authorize).Methods("GET")
-	r.HandleFunc("/oauth/token", oauthHandler.Token).Methods("POST")
-	r.HandleFunc("/oauth/userinfo", oauthHandler.UserInfo).Methods("GET")
+	r.HandleFunc("/oauth/authorize", oauthHandler.Authorize).Methods("GET", "OPTIONS")
+	r.HandleFunc("/oauth/token", oauthHandler.Token).Methods("POST", "OPTIONS")
+	r.HandleFunc("/oauth/userinfo", oauthHandler.UserInfo).Methods("GET", "OPTIONS")
 
-	r.HandleFunc("/token/exchange", tokenExchangeHandler.HandleTokenExchange).Methods("POST")
-	r.HandleFunc("/token/validate", tokenValidationHandler.ValidateToken).Methods("GET", "POST")
+	r.HandleFunc("/token/exchange", tokenExchangeHandler.HandleTokenExchange).Methods("POST", "OPTIONS")
+	r.HandleFunc("/token/validate", tokenValidationHandler.ValidateToken).Methods("GET", "POST", "OPTIONS")
 
-	r.HandleFunc("/clients/register", clientHandler.RegisterClient).Methods("POST")
+	r.HandleFunc("/clients/register", clientHandler.RegisterClient).Methods("POST", "OPTIONS")
 
 	r.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -80,6 +108,7 @@ func main() {
 
 	log.Printf("OAuth2 Server starting on port %s", cfg.ServerPort)
 	log.Printf("Using RS256 for JWT signing")
+	log.Printf("CORS enabled for development")
 	log.Fatal(http.ListenAndServe(":"+cfg.ServerPort, r))
 }
 
