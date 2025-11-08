@@ -43,6 +43,9 @@ func (h *OAuthHandler) Authorize(w http.ResponseWriter, r *http.Request) {
 	redirectURI := r.URL.Query().Get("redirect_uri")
 	scope := r.URL.Query().Get("scope")
 	state := r.URL.Query().Get("state")
+	nonce := r.URL.Query().Get("nonce")
+	codeChallenge := r.URL.Query().Get("code_challenge")
+	challengeMethod := r.URL.Query().Get("code_challenge_method")
 
 	if responseType != "code" {
 		respondError(w, http.StatusBadRequest, "unsupported_response_type", "Only 'code' response type is supported")
@@ -95,6 +98,17 @@ func (h *OAuthHandler) Authorize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Validate PKCE parameters if present
+	if codeChallenge != "" {
+		if challengeMethod == "" {
+			challengeMethod = "plain" // Default to plain if not specified
+		}
+		if challengeMethod != "S256" && challengeMethod != "plain" {
+			respondError(w, http.StatusBadRequest, "invalid_request", "Invalid code_challenge_method")
+			return
+		}
+	}
+
 	sessionID, err := utils.GenerateRandomString(32)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "server_error", "Failed to generate session")
@@ -102,14 +116,17 @@ func (h *OAuthHandler) Authorize(w http.ResponseWriter, r *http.Request) {
 	}
 
 	session := &models.Session{
-		SessionID:     sessionID,
-		ClientID:      clientID,
-		RedirectURI:   redirectURI,
-		Scope:         scope,
-		State:         state,
-		ResponseType:  responseType,
-		Authenticated: false,
-		ExpiresAt:     time.Now().Add(10 * time.Minute),
+		SessionID:       sessionID,
+		ClientID:        clientID,
+		RedirectURI:     redirectURI,
+		Scope:           scope,
+		State:           state,
+		ResponseType:    responseType,
+		Nonce:           nonce,
+		CodeChallenge:   codeChallenge,
+		ChallengeMethod: challengeMethod,
+		Authenticated:   false,
+		ExpiresAt:       time.Now().Add(10 * time.Minute),
 	}
 
 	if err := h.sessionRepo.Create(ctx, session); err != nil {

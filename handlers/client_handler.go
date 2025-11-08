@@ -23,8 +23,10 @@ func NewClientHandler(clientRepo *repository.ClientRepository) *ClientHandler {
 
 func (h *ClientHandler) RegisterClient(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Name         string   `json:"name"`
-		RedirectURIs []string `json:"redirect_uris"`
+		Name          string   `json:"name"`
+		RedirectURIs  []string `json:"redirect_uris"`
+		AllowedScopes []string `json:"allowed_scopes,omitempty"`
+		GrantTypes    []string `json:"grant_types,omitempty"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -50,10 +52,12 @@ func (h *ClientHandler) RegisterClient(w http.ResponseWriter, r *http.Request) {
 	}
 
 	client := &models.Client{
-		ClientID:     clientID,
-		ClientSecret: clientSecret,
-		RedirectURIs: req.RedirectURIs,
-		Name:         req.Name,
+		ClientID:      clientID,
+		ClientSecret:  clientSecret,
+		RedirectURIs:  req.RedirectURIs,
+		Name:          req.Name,
+		AllowedScopes: req.AllowedScopes,
+		GrantTypes:    req.GrantTypes,
 	}
 
 	ctx := context.Background()
@@ -66,10 +70,20 @@ func (h *ClientHandler) RegisterClient(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	respondJSON(w, http.StatusCreated, map[string]interface{}{
+	response := map[string]interface{}{
 		"client_id":     client.ClientID,
 		"client_secret": client.ClientSecret,
 		"name":          client.Name,
 		"redirect_uris": client.RedirectURIs,
-	})
+	}
+	
+	if len(client.AllowedScopes) > 0 {
+		response["allowed_scopes"] = client.AllowedScopes
+	}
+	
+	if len(client.GrantTypes) > 0 {
+		response["grant_types"] = client.GrantTypes
+	}
+
+	respondJSON(w, http.StatusCreated, response)
 }

@@ -118,12 +118,15 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 			code = code + "_" + req.SessionID
 
 			authCode := &models.AuthorizationCode{
-				Code:        code,
-				ClientID:    session.ClientID,
-				UserID:      user.ID,
-				RedirectURI: session.RedirectURI,
-				Scope:       session.Scope,
-				ExpiresAt:   time.Now().Add(10 * time.Minute),
+				Code:            code,
+				ClientID:        session.ClientID,
+				UserID:          user.ID,
+				RedirectURI:     session.RedirectURI,
+				Scope:           session.Scope,
+				Nonce:           session.Nonce,
+				CodeChallenge:   session.CodeChallenge,
+				ChallengeMethod: session.ChallengeMethod,
+				ExpiresAt:       time.Now().Add(10 * time.Minute),
 			}
 			h.authCodeRepo.Create(ctx, authCode)
 
@@ -211,12 +214,15 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 			code = code + "_" + req.SessionID
 
 			authCode := &models.AuthorizationCode{
-				Code:        code,
-				ClientID:    session.ClientID,
-				UserID:      user.ID,
-				RedirectURI: session.RedirectURI,
-				Scope:       session.Scope,
-				ExpiresAt:   time.Now().Add(10 * time.Minute),
+				Code:            code,
+				ClientID:        session.ClientID,
+				UserID:          user.ID,
+				RedirectURI:     session.RedirectURI,
+				Scope:           session.Scope,
+				Nonce:           session.Nonce,
+				CodeChallenge:   session.CodeChallenge,
+				ChallengeMethod: session.ChallengeMethod,
+				ExpiresAt:       time.Now().Add(10 * time.Minute),
 			}
 			h.authCodeRepo.Create(ctx, authCode)
 

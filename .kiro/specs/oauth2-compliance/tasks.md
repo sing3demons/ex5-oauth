@@ -7,14 +7,14 @@
   - Add global scope registry initialization
   - _Requirements: 1.0, 1.1_
 
-- [ ] 2. Enhance Client and AuthCode Models
-  - [ ] 2.1 Update Client model
+- [-] 2. Enhance Client and AuthCode Models
+  - [x] 2.1 Update Client model
     - Add AllowedScopes []string field to Client struct
     - Add GrantTypes []string field to Client struct
     - Update client repository methods to handle new fields
     - _Requirements: 1.2_
 
-  - [ ] 2.2 Update AuthorizationCode model
+  - [-] 2.2 Update AuthorizationCode model
     - Add Nonce string field for ID token replay protection
     - Add CodeChallenge and ChallengeMethod fields for PKCE support
     - Update auth code repository methods
