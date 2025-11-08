@@ -12,19 +12,35 @@ import (
 
 type JWTClaims struct {
 	UserID string `json:"sub"`
-	Email  string `json:"email"`
-	Name   string `json:"name"`
+	Email  string `json:"email,omitempty"`
+	Name   string `json:"name,omitempty"`
 	Scope  string `json:"scope,omitempty"`
 	jwt.RegisteredClaims
 }
 
+type IDTokenClaims struct {
+	UserID        string `json:"sub"`
+	Email         string `json:"email"`
+	EmailVerified bool   `json:"email_verified"`
+	Name          string `json:"name"`
+	Picture       string `json:"picture,omitempty"`
+	Nonce         string `json:"nonce,omitempty"`
+	jwt.RegisteredClaims
+}
+
+type AccessTokenClaims struct {
+	UserID   string `json:"sub"`
+	Scope    string `json:"scope"`
+	ClientID string `json:"client_id,omitempty"`
+	jwt.RegisteredClaims
+}
+
 func GenerateAccessToken(userID, email, name, scope string, privateKey *rsa.PrivateKey, expiry int64) (string, error) {
-	claims := JWTClaims{
+	claims := AccessTokenClaims{
 		UserID: userID,
-		Email:  email,
-		Name:   name,
 		Scope:  scope,
 		RegisteredClaims: jwt.RegisteredClaims{
+			Subject:   userID,
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Duration(expiry) * time.Second)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 		},
@@ -46,14 +62,17 @@ func GenerateRefreshToken(userID string, privateKey *rsa.PrivateKey, expiry int6
 }
 
 func GenerateIDToken(userID, email, name, clientID string, privateKey *rsa.PrivateKey, expiry int64) (string, error) {
-	claims := JWTClaims{
-		UserID: userID,
-		Email:  email,
-		Name:   name,
+	claims := IDTokenClaims{
+		UserID:        userID,
+		Email:         email,
+		EmailVerified: true,
+		Name:          name,
 		RegisteredClaims: jwt.RegisteredClaims{
+			Subject:   userID,
 			Audience:  jwt.ClaimStrings{clientID},
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Duration(expiry) * time.Second)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
+			Issuer:    "oauth2-server",
 		},
 	}
 

@@ -51,6 +51,8 @@ func main() {
 	clientHandler := handlers.NewClientHandler(clientRepo)
 	discoveryHandler := handlers.NewDiscoveryHandler("http://localhost:" + cfg.ServerPort)
 	jwksHandler := handlers.NewJWKSHandler(publicKey)
+	tokenExchangeHandler := handlers.NewTokenExchangeHandler(userRepo, clientRepo, cfg)
+	tokenValidationHandler := handlers.NewTokenValidationHandler(cfg)
 
 	r := mux.NewRouter()
 
@@ -65,6 +67,9 @@ func main() {
 	r.HandleFunc("/oauth/authorize", oauthHandler.Authorize).Methods("GET")
 	r.HandleFunc("/oauth/token", oauthHandler.Token).Methods("POST")
 	r.HandleFunc("/oauth/userinfo", oauthHandler.UserInfo).Methods("GET")
+
+	r.HandleFunc("/token/exchange", tokenExchangeHandler.HandleTokenExchange).Methods("POST")
+	r.HandleFunc("/token/validate", tokenValidationHandler.ValidateToken).Methods("GET", "POST")
 
 	r.HandleFunc("/clients/register", clientHandler.RegisterClient).Methods("POST")
 

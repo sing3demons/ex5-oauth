@@ -3,7 +3,6 @@ package handlers
 import (
 	"context"
 	"net/http"
-	"net/url"
 	"oauth2-server/config"
 	"oauth2-server/models"
 	"oauth2-server/repository"
