@@ -112,8 +112,8 @@
   - Include all OIDC required discovery metadata
   - _Requirements: 1.0_
 
-- [ ] 10. Add Integration Tests
-  - [ ] 10.1 Test scope validation flow
+- [x] 10. Add Integration Tests
+  - [x] 10.1 Test scope validation flow
     - Test authorization with valid scopes
     - Test authorization with invalid scopes returns error
     - Test authorization with unauthorized scopes (client restriction)
@@ -121,14 +121,14 @@
     - Test openid scope requirement
     - _Requirements: 1.1, 1.2_
 
-  - [ ] 10.2 Test claim filtering
+  - [x] 10.2 Test claim filtering
     - Test ID token with openid only returns sub
     - Test ID token with profile includes name
     - Test ID token with email includes email
     - Test UserInfo endpoint filters by scope
     - _Requirements: 1.3, 1.6_
 
-  - [ ] 10.3 Test scope downgrade
+  - [x] 10.3 Test scope downgrade
     - Test refresh with same scopes succeeds
     - Test refresh with reduced scopes succeeds
     - Test refresh with increased scopes fails

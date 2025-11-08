@@ -288,7 +288,13 @@ func (h *OAuthHandler) handleRefreshTokenGrant(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	user, err := h.userRepo.FindByID(ctx, claims.Subject)
+	// Use UserID field which contains the actual user ID (Subject may be empty due to JSON tag conflict)
+	userID := claims.UserID
+	if userID == "" {
+		userID = claims.Subject
+	}
+	
+	user, err := h.userRepo.FindByID(ctx, userID)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "server_error", "Failed to find user")
 		return
