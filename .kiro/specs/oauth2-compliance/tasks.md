@@ -91,15 +91,15 @@
   - Support both JWT and JWE access tokens
   - _Requirements: 1.3, 1.6_
 
-- [ ] 8. Update Client Registration Handler
-  - [ ] 8.1 Add allowed_scopes support
+- [x] 8. Update Client Registration Handler
+  - [x] 8.1 Add allowed_scopes support
     - Accept allowed_scopes in client registration request
     - Validate all allowed_scopes exist in registry
     - Store allowed_scopes in database
     - Default to all scopes if not specified
     - _Requirements: 1.2_
 
-  - [ ] 8.2 Add grant_types support
+  - [x] 8.2 Add grant_types support
     - Accept grant_types in client registration request
     - Validate grant types are supported
     - Store grant_types in database
