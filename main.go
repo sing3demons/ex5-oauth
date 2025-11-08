@@ -49,7 +49,7 @@ func main() {
 	authHandler := handlers.NewAuthHandler(userRepo, clientRepo, authCodeRepo, sessionRepo, cfg)
 	oauthHandler := handlers.NewOAuthHandler(userRepo, clientRepo, authCodeRepo, sessionRepo, cfg)
 	clientHandler := handlers.NewClientHandler(clientRepo, utils.GlobalScopeRegistry, utils.GlobalScopeValidator)
-	discoveryHandler := handlers.NewDiscoveryHandler("http://localhost:" + cfg.ServerPort)
+	discoveryHandler := handlers.NewDiscoveryHandler("http://localhost:"+cfg.ServerPort, utils.GlobalScopeRegistry)
 	jwksHandler := handlers.NewJWKSHandler(publicKey)
 	tokenExchangeHandler := handlers.NewTokenExchangeHandler(userRepo, clientRepo, cfg)
 	tokenValidationHandler := handlers.NewTokenValidationHandler(cfg)

@@ -3,7 +3,6 @@ package logger
 import (
 	"encoding/json"
 	"os"
-	"path/filepath"
 	"time"
 )
 

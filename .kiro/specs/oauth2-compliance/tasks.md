@@ -105,7 +105,7 @@
     - Store grant_types in database
     - _Requirements: 1.2_
 
-- [ ] 9. Update Discovery Endpoint
+- [x] 9. Update Discovery Endpoint
   - Add scopes_supported field with all registered scopes
   - Add grant_types_supported field
   - Add response_types_supported field
