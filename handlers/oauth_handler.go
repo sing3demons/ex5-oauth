@@ -201,6 +201,7 @@ func (h *OAuthHandler) handleAuthorizationCodeGrant(w http.ResponseWriter, r *ht
 		return
 	}
 
+	// Generate access token with scope claim only (no user claims)
 	accessToken, err := utils.GenerateAccessToken(
 		user.ID,
 		user.Email,
@@ -220,11 +221,12 @@ func (h *OAuthHandler) handleAuthorizationCodeGrant(w http.ResponseWriter, r *ht
 		return
 	}
 
+	// Generate ID token with filtered claims based on scopes
+	userClaims := utils.GetIDTokenClaimsForUser(user, authCode.Scope, authCode.Nonce)
 	idToken, err := utils.GenerateIDToken(
 		user.ID,
-		user.Email,
-		user.Name,
 		clientID,
+		userClaims,
 		h.config.PrivateKey,
 		h.config.AccessTokenExpiry,
 	)
@@ -387,7 +389,7 @@ func (h *OAuthHandler) UserInfo(w http.ResponseWriter, r *http.Request) {
 	tokenString := strings.TrimPrefix(authHeader, "Bearer ")
 	
 	var scope string
-	var userID, email, name string
+	var userID string
 
 	// Support both JWT and JWE tokens
 	if utils.IsJWE(tokenString) {
@@ -397,8 +399,6 @@ func (h *OAuthHandler) UserInfo(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		userID = jweClaims.UserID
-		email = jweClaims.Email
-		name = jweClaims.Name
 		scope = jweClaims.Scope
 	} else {
 		jwtClaims, err := utils.ValidateToken(tokenString, h.config.PublicKey)
@@ -407,25 +407,19 @@ func (h *OAuthHandler) UserInfo(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		userID = jwtClaims.UserID
-		email = jwtClaims.Email
-		name = jwtClaims.Name
 		scope = jwtClaims.Scope
 	}
 
-	// Build userInfo based on scope
-	userInfo := models.UserInfo{
-		Sub: userID,
+	// Get user from database
+	ctx := context.Background()
+	user, err := h.userRepo.FindByID(ctx, userID)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "server_error", "Failed to find user")
+		return
 	}
 
-	// Only include email if email scope is present
-	if utils.ScopeIncludesEmail(scope) {
-		userInfo.Email = email
-	}
-
-	// Only include name if profile scope is present
-	if utils.ScopeIncludesProfile(scope) {
-		userInfo.Name = name
-	}
-
-	respondJSON(w, http.StatusOK, userInfo)
+	// Filter claims based on scope using claim filtering service
+	filteredClaims := utils.FilterClaimsForUser(user, scope)
+	
+	respondJSON(w, http.StatusOK, filteredClaims)
 }

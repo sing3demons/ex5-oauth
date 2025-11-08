@@ -77,11 +77,16 @@ func TestGenerateIDToken(t *testing.T) {
 		t.Fatalf("Failed to generate keys: %v", err)
 	}
 
+	userClaims := map[string]interface{}{
+		"email":          "user@example.com",
+		"email_verified": true,
+		"name":           "John Doe",
+	}
+
 	token, err := GenerateIDToken(
 		"user123",
-		"user@example.com",
-		"John Doe",
 		"client456",
+		userClaims,
 		privateKey,
 		3600,
 	)

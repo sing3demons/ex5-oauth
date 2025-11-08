@@ -99,12 +99,17 @@ func TestGenerateJWEIDToken(t *testing.T) {
 	}
 	publicKey := &privateKey.PublicKey
 
+	userClaims := map[string]interface{}{
+		"email":          "test@example.com",
+		"email_verified": true,
+		"name":           "Test User",
+	}
+
 	expiry := time.Now().Add(time.Hour).Unix()
 	token, err := GenerateJWEIDToken(
 		"user123",
-		"test@example.com",
-		"Test User",
 		"client456",
+		userClaims,
 		publicKey,
 		expiry,
 	)

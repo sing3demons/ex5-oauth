@@ -165,11 +165,12 @@ func (h *TokenExchangeHandler) HandleTokenExchange(w http.ResponseWriter, r *htt
 			return
 		}
 
+		// Generate ID token with filtered claims based on scopes
+		userClaims := utils.GetIDTokenClaimsForUser(user, scope, "")
 		idToken, err = utils.GenerateJWEIDToken(
 			userID,
-			email,
-			name,
 			req.ClientID,
+			userClaims,
 			h.config.PublicKey,
 			time.Now().Add(time.Duration(expiresIn)*time.Second).Unix(),
 		)
@@ -202,11 +203,12 @@ func (h *TokenExchangeHandler) HandleTokenExchange(w http.ResponseWriter, r *htt
 			return
 		}
 
+		// Generate ID token with filtered claims based on scopes
+		userClaims := utils.GetIDTokenClaimsForUser(user, scope, "")
 		idToken, err = utils.GenerateIDToken(
 			userID,
-			email,
-			name,
 			req.ClientID,
+			userClaims,
 			h.config.PrivateKey,
 			expiresIn,
 		)

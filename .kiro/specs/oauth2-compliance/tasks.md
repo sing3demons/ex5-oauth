@@ -20,7 +20,7 @@
     - Update auth code repository methods
     - _Requirements: 1.5, 2.0_
 
-- [-] 3. Implement Scope Validation Service
+- [x] 3. Implement Scope Validation Service
   - [x] 3.1 Create scope validator
     - Implement ValidateScope function using registry
     - Implement NormalizeScope to remove duplicates and invalid scopes
@@ -33,13 +33,13 @@
     - Return detailed error with unauthorized scopes list
     - _Requirements: 1.2_
 
-  - [-] 3.3 Add scope downgrade validation
+  - [x] 3.3 Add scope downgrade validation
     - Implement ValidateScopeDowngrade for refresh token flow
     - Ensure requested scopes are subset of original scopes
     - Store original scopes with refresh token
     - _Requirements: 1.4_
 
-- [ ] 4. Implement Claim Filtering Service
+- [-] 4. Implement Claim Filtering Service
   - Create ClaimFilter service to filter user claims based on scopes
   - Implement GetClaimsForScopes using scope registry
   - Update ID token generation to use claim filtering

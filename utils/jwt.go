@@ -19,13 +19,8 @@ type JWTClaims struct {
 }
 
 type IDTokenClaims struct {
-	UserID        string `json:"sub"`
-	Email         string `json:"email"`
-	EmailVerified bool   `json:"email_verified"`
-	Name          string `json:"name"`
-	Picture       string `json:"picture,omitempty"`
-	Nonce         string `json:"nonce,omitempty"`
 	jwt.RegisteredClaims
+	// Additional claims are added dynamically via MapClaims
 }
 
 type AccessTokenClaims struct {
@@ -71,19 +66,38 @@ func GenerateRefreshToken(userID, scope string, privateKey *rsa.PrivateKey, expi
 	return token.SignedString(privateKey)
 }
 
-func GenerateIDToken(userID, email, name, clientID string, privateKey *rsa.PrivateKey, expiry int64) (string, error) {
-	claims := IDTokenClaims{
-		UserID:        userID,
-		Email:         email,
-		EmailVerified: true,
-		Name:          name,
-		RegisteredClaims: jwt.RegisteredClaims{
-			Subject:   userID,
-			Audience:  jwt.ClaimStrings{clientID},
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Duration(expiry) * time.Second)),
-			IssuedAt:  jwt.NewNumericDate(time.Now()),
-			Issuer:    "oauth2-server",
-		},
+// GenerateIDToken generates an ID token with filtered claims based on scopes
+func GenerateIDToken(userID, clientID string, userClaims map[string]interface{}, privateKey *rsa.PrivateKey, expiry int64) (string, error) {
+	// Start with user claims (already filtered by scope)
+	claims := jwt.MapClaims{}
+	
+	// Add all user claims
+	for key, value := range userClaims {
+		claims[key] = value
+	}
+	
+	// Add standard JWT claims
+	claims["sub"] = userID
+	claims["aud"] = clientID
+	claims["exp"] = time.Now().Add(time.Duration(expiry) * time.Second).Unix()
+	claims["iat"] = time.Now().Unix()
+	claims["iss"] = "oauth2-server"
+
+	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
+	return token.SignedString(privateKey)
+}
+
+// GenerateIDTokenLegacy generates an ID token with explicit claims (deprecated, use GenerateIDToken with filtered claims)
+func GenerateIDTokenLegacy(userID, email, name, clientID string, privateKey *rsa.PrivateKey, expiry int64) (string, error) {
+	claims := jwt.MapClaims{
+		"sub":            userID,
+		"email":          email,
+		"email_verified": true,
+		"name":           name,
+		"aud":            clientID,
+		"exp":            time.Now().Add(time.Duration(expiry) * time.Second).Unix(),
+		"iat":            time.Now().Unix(),
+		"iss":            "oauth2-server",
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)

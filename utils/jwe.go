@@ -182,8 +182,28 @@ func GenerateJWERefreshToken(userID string, publicKey *rsa.PublicKey, expiry int
 	return EncryptJWE(claims, publicKey)
 }
 
-// GenerateJWEIDToken creates an encrypted ID token
-func GenerateJWEIDToken(userID, email, name, clientID string, publicKey *rsa.PublicKey, expiry int64) (string, error) {
+// GenerateJWEIDToken creates an encrypted ID token with filtered claims
+func GenerateJWEIDToken(userID, clientID string, userClaims map[string]interface{}, publicKey *rsa.PublicKey, expiry int64) (string, error) {
+	// Start with user claims (already filtered by scope)
+	claims := make(map[string]interface{})
+	
+	// Add all user claims
+	for key, value := range userClaims {
+		claims[key] = value
+	}
+	
+	// Add standard JWT claims
+	claims["sub"] = userID
+	claims["aud"] = clientID
+	claims["iss"] = "oauth2-server"
+	claims["exp"] = expiry
+	claims["iat"] = time.Now().Unix()
+	
+	return EncryptJWE(claims, publicKey)
+}
+
+// GenerateJWEIDTokenLegacy creates an encrypted ID token with explicit claims (deprecated)
+func GenerateJWEIDTokenLegacy(userID, email, name, clientID string, publicKey *rsa.PublicKey, expiry int64) (string, error) {
 	claims := JWEIDTokenClaims{
 		UserID:        userID,
 		Email:         email,
