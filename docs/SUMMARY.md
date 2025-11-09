@@ -12,6 +12,11 @@
 - **Client Credentials Grant**
 - **Refresh Token Grant**
 - **UserInfo Endpoint**
+- **Single Sign-On (SSO)** - Login once, access multiple applications
+- **User Consent Management** - Remember user permissions across applications
+- **Session Management API** - View and revoke active sessions
+- **Authorization Management API** - View and revoke application permissions
+- **OIDC Prompt Parameter Support** - Control authentication behavior (login, consent, none)
 
 ### 2. Security Features
 - Password hashing with bcrypt
@@ -21,6 +26,9 @@
 - Client secret validation
 - Redirect URI validation
 - RSA key pair generation and management
+- **SSO Session Security** - HTTP-only secure cookies with 7-day expiration
+- **Session Fingerprinting** - IP address and user agent tracking
+- **Consent Expiration** - 1-year consent lifetime with periodic re-validation
 
 ### 3. Structured Logging System
 - **Detail Logs**: Individual operation logging with data masking
@@ -163,6 +171,17 @@ Benefits:
 - `GET /oauth/userinfo` - UserInfo endpoint
 - `GET /.well-known/openid-configuration` - OIDC Discovery
 - `GET /.well-known/jwks.json` - JWKS endpoint
+- `POST /auth/logout` - SSO logout endpoint
+- `GET /oauth/consent` - Consent screen
+- `POST /oauth/consent` - Handle consent approval/denial
+
+### SSO Session Management
+- `GET /account/sessions` - List active SSO sessions
+- `DELETE /account/sessions/{session_id}` - Revoke specific session
+
+### SSO Authorization Management
+- `GET /account/authorizations` - List authorized applications
+- `DELETE /account/authorizations/{client_id}` - Revoke application authorization
 
 ### Client Management
 - `POST /clients/register` - Register OAuth client
@@ -195,6 +214,11 @@ DATABASE_NAME=oauth2_db
 ACCESS_TOKEN_EXPIRY=3600
 REFRESH_TOKEN_EXPIRY=604800
 
+# SSO Configuration
+SSO_SESSION_EXPIRY_DAYS=7
+SSO_CONSENT_EXPIRY_DAYS=365
+SSO_COOKIE_SECURE=true
+
 # Logging
 LOG_SUMMARY_PATH=./logs/summary/
 LOG_SUMMARY_CONSOLE=true
@@ -206,10 +230,12 @@ LOG_DETAIL_FILE=false
 
 ## 📚 Documentation
 
-- [Logger README](logger/README.md) - Detailed logging documentation
+- [Main README](../README.md) - Project overview and API documentation
+- [Logger README](../logger/README.md) - Detailed logging documentation
 - [Setup Guide](SETUP.md) - Installation and setup instructions
 - [Browser Flow Test](test_browser_flow.md) - OAuth flow testing guide
-- [Main README](README.md) - Project overview and API documentation
+- [SSO Usage Guide](SSO_USAGE.md) - Comprehensive SSO usage examples and flows
+- [SSO API Reference](SSO_API_REFERENCE.md) - Complete API reference for SSO endpoints
 
 ## ⚠️ Known Issues
 
@@ -227,6 +253,11 @@ LOG_DETAIL_FILE=false
 - ✅ Multi-source configuration
 - ✅ 87.1% test coverage for utils
 - ✅ Comprehensive documentation
+- ✅ **Single Sign-On (SSO)** with automatic authorization
+- ✅ **User Consent Management** with 1-year persistence
+- ✅ **Session Management API** for security auditing
+- ✅ **Authorization Management API** for privacy control
+- ✅ **OIDC Prompt Parameter** support for flexible authentication
 
 ## 🚧 Next Steps
 

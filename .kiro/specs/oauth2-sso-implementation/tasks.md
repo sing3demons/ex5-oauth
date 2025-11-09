@@ -109,7 +109,7 @@
   - Test prompt parameter flows: prompt=login, prompt=consent, prompt=none
   - _Requirements: All requirements (end-to-end validation)_
 
-- [-] 15. Add documentation
+- [x] 15. Add documentation
   - Update main README.md with SSO feature description
   - Create SSO_USAGE.md with examples of SSO flows
   - Document session management API endpoints

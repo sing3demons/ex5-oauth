@@ -128,7 +128,10 @@ The OAuth2 Server now supports Single Sign-On functionality, allowing users to a
 2. **Second App**: User accesses App B → Automatically authorized (no login/consent needed)
 3. **Logout**: User logs out → SSO session cleared across all applications
 
-For detailed SSO usage examples and flows, see [docs/SSO_USAGE.md](docs/SSO_USAGE.md).
+**Documentation**:
+- [SSO Usage Guide](docs/SSO_USAGE.md) - Comprehensive examples and flows
+- [SSO API Reference](docs/SSO_API_REFERENCE.md) - Complete API documentation
+- [SSO Quick Reference](docs/SSO_QUICK_REFERENCE.md) - Quick reference for developers
 
 ## API Endpoints
 
