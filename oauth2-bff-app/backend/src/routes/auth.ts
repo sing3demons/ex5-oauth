@@ -4,14 +4,10 @@ import { generateState } from '../utils/pkce';
 import { generateNonce, validateIDToken, decodeJWT } from '../utils/oidc';
 import { requireRefreshToken } from '../middleware/auth';
 import { TokenResponse, UserInfo } from '../types';
+import config from '../config';
 
 const router = express.Router();
 
-const OAUTH2_SERVER = process.env.OAUTH2_SERVER_URL || 'http://localhost:8080';
-const CLIENT_ID = process.env.CLIENT_ID!;
-const CLIENT_SECRET = process.env.CLIENT_SECRET!;
-const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
-const REDIRECT_URI = `${process.env.PORT ? `http://localhost:${process.env.PORT}` : 'http://localhost:3001'}/auth/callback`;
 
 // In-memory session store (use Redis in production)
 const sessions = new Map<string, any>();
@@ -27,16 +23,16 @@ router.get('/login', (req: Request, res: Response) => {
     
     // Store state and nonce in session for validation
     sessions.set(state, {
-      redirect_uri: REDIRECT_URI,
+      redirect_uri: config.REDIRECT_URI,
       nonce,
       timestamp: Date.now()
     });
     
     // Build authorization URL with OIDC parameters
-    const authUrl = new URL(`${OAUTH2_SERVER}/oauth/authorize`);
+    const authUrl = new URL(`${config.OAUTH2_SERVER}/oauth/authorize`);
     authUrl.searchParams.set('response_type', 'code');
-    authUrl.searchParams.set('client_id', CLIENT_ID);
-    authUrl.searchParams.set('redirect_uri', REDIRECT_URI);
+    authUrl.searchParams.set('client_id', config.CLIENT_ID);
+    authUrl.searchParams.set('redirect_uri', config.REDIRECT_URI);
     authUrl.searchParams.set('scope', 'openid profile email');
     authUrl.searchParams.set('state', state);
     authUrl.searchParams.set('nonce', nonce);
@@ -63,17 +59,17 @@ router.get('/callback', async (req: Request, res: Response) => {
     const { code, state, error } = req.query;
     
     if (error) {
-      return res.redirect(`${FRONTEND_URL}?error=${error}`);
+      return res.redirect(`${config.FRONTEND_URL}?error=${error}`);
     }
     
     if (!code || !state) {
-      return res.redirect(`${FRONTEND_URL}?error=invalid_request`);
+      return res.redirect(`${config.FRONTEND_URL}?error=invalid_request`);
     }
     
     // Retrieve session
     const session = sessions.get(state as string);
     if (!session) {
-      return res.redirect(`${FRONTEND_URL}?error=invalid_state`);
+      return res.redirect(`${config.FRONTEND_URL}?error=invalid_state`);
     }
     
     // Clean up session
@@ -81,13 +77,13 @@ router.get('/callback', async (req: Request, res: Response) => {
     
     // Exchange authorization code for tokens (with client_secret)
     const tokenResponse = await axios.post<TokenResponse>(
-      `${OAUTH2_SERVER}/oauth/token`,
+      `${config.OAUTH2_SERVER}/oauth/token`,
       new URLSearchParams({
         grant_type: 'authorization_code',
         code: code as string,
         redirect_uri: session.redirect_uri,
-        client_id: CLIENT_ID,
-        client_secret: CLIENT_SECRET
+        client_id: config.CLIENT_ID,
+        client_secret: config.CLIENT_SECRET
       }),
       {
         headers: {
@@ -102,14 +98,14 @@ router.get('/callback', async (req: Request, res: Response) => {
     if (tokens.id_token) {
       const validation = validateIDToken(
         tokens.id_token,
-        CLIENT_ID,
-        OAUTH2_SERVER,
+        config.CLIENT_ID,
+        config.OAUTH2_SERVER,
         session.nonce
       );
       
       if (!validation.valid) {
         console.error('ID Token validation failed:', validation.error);
-        return res.redirect(`${FRONTEND_URL}?error=invalid_id_token`);
+        return res.redirect(`${config.FRONTEND_URL}?error=invalid_id_token`);
       }
       
       console.log('ID Token validated successfully:', validation.claims);
@@ -127,7 +123,7 @@ router.get('/callback', async (req: Request, res: Response) => {
     }
     
     // Redirect to frontend with access token
-    const redirectUrl = new URL(FRONTEND_URL);
+    const redirectUrl = new URL(config.FRONTEND_URL);
     redirectUrl.searchParams.set('access_token', tokens.access_token);
     redirectUrl.searchParams.set('expires_in', tokens.expires_in.toString());
     if (tokens.id_token) {
@@ -137,7 +133,7 @@ router.get('/callback', async (req: Request, res: Response) => {
     res.redirect(redirectUrl.toString());
   } catch (error: any) {
     console.error('Callback error:', error.response?.data || error.message);
-    res.redirect(`${FRONTEND_URL}?error=token_exchange_failed`);
+    res.redirect(`${config.FRONTEND_URL}?error=token_exchange_failed`);
   }
 });
 
@@ -151,12 +147,12 @@ router.post('/refresh', requireRefreshToken, async (req: Request, res: Response)
     
     // Exchange refresh token for new access token (with client_secret)
     const tokenResponse = await axios.post<TokenResponse>(
-      `${OAUTH2_SERVER}/oauth/token`,
+      `${config.OAUTH2_SERVER}/oauth/token`,
       new URLSearchParams({
         grant_type: 'refresh_token',
         refresh_token: refreshToken,
-        client_id: CLIENT_ID,
-        client_secret: CLIENT_SECRET
+        client_id: config.CLIENT_ID,
+        client_secret: config.CLIENT_SECRET
       }),
       {
         headers: {
@@ -230,7 +226,7 @@ router.get('/userinfo', async (req: Request, res: Response) => {
     
     // Forward request to OAuth2 server
     const userInfoResponse = await axios.get<UserInfo>(
-      `${OAUTH2_SERVER}/oauth/userinfo`,
+      `${config.OAUTH2_SERVER}/oauth/userinfo`,
       {
         headers: {
           Authorization: authHeader
@@ -255,7 +251,7 @@ router.get('/userinfo', async (req: Request, res: Response) => {
 router.get('/discovery', async (req: Request, res: Response) => {
   try {
     const response = await axios.get(
-      `${OAUTH2_SERVER}/.well-known/openid-configuration`
+      `${config.OAUTH2_SERVER}/.well-known/openid-configuration`
     );
     res.json(response.data);
   } catch (error: any) {
@@ -284,8 +280,8 @@ router.post('/validate-token', (req: Request, res: Response) => {
     
     const validation = validateIDToken(
       id_token,
-      CLIENT_ID,
-      OAUTH2_SERVER
+      config.CLIENT_ID,
+      config.OAUTH2_SERVER
     );
     
     if (!validation.valid) {

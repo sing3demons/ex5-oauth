@@ -29,14 +29,14 @@ func GetResponseMode(r *http.Request) ResponseMode {
 	}
 
 	// Check Accept header for JSON preference
-	accept := r.Header.Get("Accept")
-	if accept == "application/json" || accept == "*/*" {
-		// If it's an API call (not from browser), prefer JSON
-		if r.Header.Get("X-Requested-With") == "XMLHttpRequest" ||
-			r.Header.Get("Content-Type") == "application/json" {
-			return ResponseModeJSON
-		}
-	}
+	// accept := r.Header.Get("Accept")
+	// if accept == "application/json" || accept == "*/*" {
+	// 	// If it's an API call (not from browser), prefer JSON
+	// 	if r.Header.Get("X-Requested-With") == "XMLHttpRequest" ||
+	// 		r.Header.Get("Content-Type") == "application/json" {
+	// 		return ResponseModeJSON
+	// 	}
+	// }
 
 	// Default to query for traditional OAuth flow
 	return ResponseModeQuery

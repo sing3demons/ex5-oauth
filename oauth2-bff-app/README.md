@@ -24,7 +24,7 @@ React (TypeScript) → BFF Server (Node.js/TypeScript) → OAuth2 Server (Go)
 
 ```
 oauth2-bff-app/
-├── backend/              # BFF Server (TypeScript)
+├── backend/              # BFF Server (Express + TypeScript)
 │   ├── src/
 │   │   ├── server.ts
 │   │   ├── routes/
@@ -32,6 +32,17 @@ oauth2-bff-app/
 │   │   └── types/
 │   ├── package.json
 │   └── tsconfig.json
+│
+├── backend-nestjs/       # BFF Server (NestJS + TypeScript) - NEW!
+│   ├── src/
+│   │   ├── main.ts
+│   │   ├── auth/
+│   │   ├── todos/
+│   │   ├── database/
+│   │   └── shared/
+│   ├── package.json
+│   ├── README.md
+│   └── MIGRATION.md
 │
 └── frontend/            # React App (TypeScript)
     ├── src/
@@ -43,6 +54,26 @@ oauth2-bff-app/
     └── tsconfig.json
 ```
 
+## Backend Versions
+
+This project now includes **two backend implementations**:
+
+### Express Backend (`backend/`)
+- Simple, straightforward Express.js implementation
+- Minimal dependencies
+- Great for learning and small projects
+- See [backend/README.md](./backend/README.md)
+
+### NestJS Backend (`backend-nestjs/`) ⭐ **Recommended**
+- Modern, scalable NestJS framework
+- Modular architecture with dependency injection
+- Built-in guards, pipes, and interceptors
+- Better for larger applications and teams
+- See [backend-nestjs/README.md](./backend-nestjs/README.md)
+- See [backend-nestjs/MIGRATION.md](./backend-nestjs/MIGRATION.md) for differences
+
+**Both versions are 100% API compatible** - the frontend works with either backend without any changes!
+
 ## Quick Start
 
 ### 1. Start OAuth2 Server (Go)
@@ -52,10 +83,19 @@ go run main.go
 ```
 
 ### 2. Start BFF Server
+
+**Option A: Express Backend**
 ```bash
 cd backend
 npm install
 npm run dev
+```
+
+**Option B: NestJS Backend (Recommended)**
+```bash
+cd backend-nestjs
+npm install
+npm run start:dev
 ```
 
 ### 3. Start React Frontend
@@ -65,17 +105,23 @@ npm install
 npm run dev
 ```
 
+> **Note**: The frontend works with either backend version. Choose the one that fits your needs!
+
 ## Environment Variables
 
-### Backend (.env)
+### Backend (.env) - Both Express and NestJS
 ```
 PORT=3001
 OAUTH2_SERVER_URL=http://localhost:8080
 CLIENT_ID=qE5EjnNKrC6hRhYbC6q9VVND-rkN8Lah
 CLIENT_SECRET=mfsw5Es8V0bSYrKYs3JCLlBYnIN322q2RlycNo3lLASnync03C2zYcDxXlLjwSXe
 FRONTEND_URL=http://localhost:5173
+MONGODB_URI=mongodb://localhost:27017
+MONGODB_DB=oauth2_bff_app
 SESSION_SECRET=your_secret_key
 ```
+
+> **Note**: NestJS backend also requires MongoDB configuration (MONGODB_URI and MONGODB_DB)
 
 ### Frontend (.env)
 ```
