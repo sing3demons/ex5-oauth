@@ -221,6 +221,10 @@ func (h *AuthHandler) ShowLogin(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+		// setHeader to return session ID to client
+	w.Header().Set("X-Session-ID", sessionID)
+
+
 	tmpl, err := template.ParseFiles("templates/login.html")
 	if err != nil {
 		http.Error(w, "Template error", http.StatusInternalServerError)

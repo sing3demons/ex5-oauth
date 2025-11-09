@@ -146,19 +146,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         scheduleTokenRefresh(parseInt(expiresInParam));
         
         // Fetch user info
-        fetchUserInfo(accessTokenParam).finally(() => {
+        try {
+          await fetchUserInfo(accessTokenParam);
+        } catch (error) {
+          console.error('Failed to fetch user info:', error);
+        } finally {
           setIsLoading(false);
-        });
+        }
 
         // Clean URL
         window.history.replaceState({}, document.title, window.location.pathname);
       } else {
         // Try to refresh token on mount (check for existing session)
-        refreshToken()
-          .catch(() => {
-            // No valid refresh token
-            setIsLoading(false);
-          });
+        try {
+          await refreshToken();
+        } catch (error) {
+          // No valid refresh token - this is normal for first visit
+          console.log('No existing session found');
+        } finally {
+          // Always stop loading, even if refresh fails
+          setIsLoading(false);
+        }
       }
     };
 

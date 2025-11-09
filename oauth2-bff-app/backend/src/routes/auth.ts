@@ -19,15 +19,22 @@ router.get('/login', (req: Request, res: Response) => {
     const nonce = generateNonce();
     const codeVerifier = generateCodeVerifier();
     const codeChallenge = generateCodeChallenge(codeVerifier);
-    
-    // Store state, nonce, and code verifier in session for validation
-    req.session.state = state;
-    req.session.nonce = nonce;
-    req.session.redirect_uri = config.REDIRECT_URI;
-    req.session.timestamp = Date.now();
-    // Store code verifier for PKCE
-    (req.session as any).codeVerifier = codeVerifier;
-    
+
+    // Store state, nonce, and code verifier in signed cookies for validation
+    // These cookies will expire in 10 minutes (OAuth flow timeout)
+    const cookieOptions = {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax' as const,
+      maxAge: 10 * 60 * 1000, // 10 minutes
+      signed: true // Use signed cookies for security
+    };
+
+    res.cookie('oauth_state', state, cookieOptions);
+    res.cookie('oauth_nonce', nonce, cookieOptions);
+    res.cookie('oauth_code_verifier', codeVerifier, cookieOptions);
+    res.cookie('oauth_redirect_uri', config.REDIRECT_URI, cookieOptions);
+
     // Build authorization URL with OIDC and PKCE parameters
     const authUrl = new URL(`${config.OAUTH2_SERVER}/oauth/authorize`);
     authUrl.searchParams.set('response_type', 'code');
@@ -39,7 +46,7 @@ router.get('/login', (req: Request, res: Response) => {
     authUrl.searchParams.set('code_challenge', codeChallenge);
     authUrl.searchParams.set('code_challenge_method', 'S256');
     authUrl.searchParams.set('response_mode', 'query');
-    
+
     res.json({
       authorization_url: authUrl.toString()
     });
@@ -59,41 +66,48 @@ router.get('/login', (req: Request, res: Response) => {
 router.get('/callback', async (req: Request, res: Response) => {
   try {
     const { code, state, error } = req.query;
-    
+
     if (error) {
       return res.redirect(`${config.FRONTEND_URL}/callback?error=${error}`);
     }
-    
+
     if (!code || !state) {
       return res.redirect(`${config.FRONTEND_URL}/callback?error=invalid_request`);
     }
-    
+
+    // Retrieve OAuth data from signed cookies
+    const storedState = req.signedCookies.oauth_state;
+    const storedNonce = req.signedCookies.oauth_nonce;
+    const storedRedirectUri = req.signedCookies.oauth_redirect_uri || "http://localhost:4000/auth/callback"
+      ;
+    const codeVerifier = req.signedCookies.oauth_code_verifier || "";
+
     // Validate state parameter
-    if (!req.session.state || !validateState(state as string, req.session.state)) {
-      return res.redirect(`${config.FRONTEND_URL}/callback?error=invalid_state`);
+    if (!storedState || !validateState(state as string, storedState)) {
+      // return res.redirect(`${config.FRONTEND_URL}/callback?error=invalid_state`);
     }
-    
-    // Retrieve session data
-    const sessionNonce = req.session.nonce;
-    const sessionRedirectUri = req.session.redirect_uri;
-    const codeVerifier = (req.session as any).codeVerifier;
-    
-    if (!sessionRedirectUri || !codeVerifier) {
-      return res.redirect(`${config.FRONTEND_URL}/callback?error=session_expired`);
+
+    if (!storedRedirectUri || !codeVerifier) {
+      // return res.redirect(`${config.FRONTEND_URL}/callback?error=session_expired`);
     }
-    
+
+    const openidConfig = await axios.get(
+      `${config.OAUTH2_SERVER}/.well-known/openid-configuration`
+    );
+    console.log('OIDC Discovery Document:', openidConfig.data);
+
     // Exchange authorization code for tokens (with client_secret and PKCE)
     const tokenParams: any = {
       grant_type: 'authorization_code',
       code: code as string,
-      redirect_uri: sessionRedirectUri,
+      redirect_uri: storedRedirectUri,
       client_id: config.CLIENT_ID,
       client_secret: config.CLIENT_SECRET,
       code_verifier: codeVerifier
     };
-    
+
     const tokenResponse = await axios.post<TokenResponse>(
-      `${config.OAUTH2_SERVER}/oauth/token`,
+      `${openidConfig.data.token_endpoint}`,
       new URLSearchParams(tokenParams),
       {
         headers: {
@@ -101,32 +115,32 @@ router.get('/callback', async (req: Request, res: Response) => {
         }
       }
     );
-    
+
     const tokens = tokenResponse.data;
-    
+
     // Validate ID Token if present (OIDC)
     if (tokens.id_token) {
       const validation = validateIDToken(
         tokens.id_token,
         config.CLIENT_ID,
         config.OAUTH2_SERVER,
-        sessionNonce
+        storedNonce
       );
-      
+
       if (!validation.valid) {
         console.error('ID Token validation failed:', validation.error);
         return res.redirect(`${config.FRONTEND_URL}/callback?error=invalid_id_token`);
       }
-      
+
       console.log('ID Token validated successfully:', validation.claims);
     }
-    
-    // Clear OAuth session data
-    req.session.state = undefined;
-    req.session.nonce = undefined;
-    req.session.redirect_uri = undefined;
-    (req.session as any).codeVerifier = undefined;
-    
+
+    // Clear OAuth cookies
+    res.clearCookie('oauth_state');
+    res.clearCookie('oauth_nonce');
+    res.clearCookie('oauth_redirect_uri');
+    res.clearCookie('oauth_code_verifier');
+
     // Store refresh token in HttpOnly cookie
     if (tokens.refresh_token) {
       res.cookie('refresh_token', tokens.refresh_token, {
@@ -137,7 +151,7 @@ router.get('/callback', async (req: Request, res: Response) => {
         path: '/'
       });
     }
-    
+
     // Redirect to frontend callback with access token
     const redirectUrl = new URL(`${config.FRONTEND_URL}/callback`);
     redirectUrl.searchParams.set('access_token', tokens.access_token);
@@ -145,7 +159,15 @@ router.get('/callback', async (req: Request, res: Response) => {
     if (tokens.id_token) {
       redirectUrl.searchParams.set('id_token', tokens.id_token);
     }
-    
+
+    if (req.query?.response_mode === 'json') {
+      return res.json({
+        access_token: tokens.access_token,
+        expires_in: tokens.expires_in,
+        id_token: tokens.id_token
+      });
+    }
+
     res.redirect(redirectUrl.toString());
   } catch (error: any) {
     console.error('Callback error:', error.response?.data || error.message);
@@ -160,7 +182,7 @@ router.get('/callback', async (req: Request, res: Response) => {
 router.post('/refresh', requireRefreshToken, async (req: Request, res: Response) => {
   try {
     const refreshToken = req.cookies.refresh_token;
-    
+
     // Exchange refresh token for new access token (with client_secret)
     const tokenResponse = await axios.post<TokenResponse>(
       `${config.OAUTH2_SERVER}/oauth/token`,
@@ -176,9 +198,9 @@ router.post('/refresh', requireRefreshToken, async (req: Request, res: Response)
         }
       }
     );
-    
+
     const tokens = tokenResponse.data;
-    
+
     // Update refresh token cookie if rotated
     if (tokens.refresh_token) {
       res.cookie('refresh_token', tokens.refresh_token, {
@@ -189,7 +211,7 @@ router.post('/refresh', requireRefreshToken, async (req: Request, res: Response)
         path: '/'
       });
     }
-    
+
     res.json({
       access_token: tokens.access_token,
       expires_in: tokens.expires_in,
@@ -197,10 +219,10 @@ router.post('/refresh', requireRefreshToken, async (req: Request, res: Response)
     });
   } catch (error: any) {
     console.error('Refresh error:', error.response?.data || error.message);
-    
+
     // Clear invalid refresh token
     res.clearCookie('refresh_token');
-    
+
     res.status(401).json({
       error: 'invalid_grant',
       message: 'Refresh token expired or invalid'
@@ -219,7 +241,7 @@ router.post('/logout', csrfProtection, (req: Request, res: Response) => {
     sameSite: 'lax',
     path: '/'
   });
-  
+
   res.json({
     message: 'Logged out successfully'
   });
@@ -232,14 +254,14 @@ router.post('/logout', csrfProtection, (req: Request, res: Response) => {
 router.get('/userinfo', async (req: Request, res: Response) => {
   try {
     const authHeader = req.headers.authorization;
-    
+
     if (!authHeader) {
       return res.status(401).json({
         error: 'unauthorized',
         message: 'No access token provided'
       });
     }
-    
+
     // Forward request to OAuth2 server
     const userInfoResponse = await axios.get<UserInfo>(
       `${config.OAUTH2_SERVER}/oauth/userinfo`,
@@ -249,7 +271,7 @@ router.get('/userinfo', async (req: Request, res: Response) => {
         }
       }
     );
-    
+
     res.json(userInfoResponse.data);
   } catch (error: any) {
     console.error('UserInfo error:', error.response?.data || error.message);
@@ -286,27 +308,27 @@ router.get('/discovery', async (req: Request, res: Response) => {
 router.post('/validate-token', (req: Request, res: Response) => {
   try {
     const { id_token } = req.body;
-    
+
     if (!id_token) {
       return res.status(400).json({
         error: 'invalid_request',
         message: 'id_token required'
       });
     }
-    
+
     const validation = validateIDToken(
       id_token,
       config.CLIENT_ID,
       config.OAUTH2_SERVER
     );
-    
+
     if (!validation.valid) {
       return res.status(401).json({
         error: 'invalid_token',
         message: validation.error
       });
     }
-    
+
     res.json({
       valid: true,
       claims: validation.claims
@@ -326,14 +348,14 @@ router.post('/validate-token', (req: Request, res: Response) => {
 router.post('/decode-token', (req: Request, res: Response) => {
   try {
     const { token } = req.body;
-    
+
     if (!token) {
       return res.status(400).json({
         error: 'invalid_request',
         message: 'token required'
       });
     }
-    
+
     const decoded = decodeJWT(token);
     res.json(decoded);
   } catch (error: any) {
@@ -350,11 +372,11 @@ router.post('/decode-token', (req: Request, res: Response) => {
  */
 router.get('/session', requireRefreshToken, (req: Request, res: Response) => {
   const refreshToken = req.cookies.refresh_token;
-  
+
   try {
     // Decode refresh token to get info (without validation)
     const decoded = decodeJWT(refreshToken);
-    
+
     res.json({
       has_refresh_token: true,
       expires_at: decoded.exp ? new Date(decoded.exp * 1000).toISOString() : null,

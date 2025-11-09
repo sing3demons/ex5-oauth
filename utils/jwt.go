@@ -81,7 +81,7 @@ func GenerateIDToken(userID, clientID string, userClaims map[string]interface{},
 	claims["aud"] = clientID
 	claims["exp"] = time.Now().Add(time.Duration(expiry) * time.Second).Unix()
 	claims["iat"] = time.Now().Unix()
-	claims["iss"] = "oauth2-server"
+	claims["iss"] = "http://localhost:8080"
 
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
 	return token.SignedString(privateKey)

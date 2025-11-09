@@ -27,7 +27,14 @@ router.get('/', requireAuth, async (req: Request, res: Response, next: NextFunct
       .sort({ status: 1, position: 1 })
       .lean();
     
-    res.json(todos);
+    // Transform _id to id for frontend compatibility
+    const transformedTodos = todos.map(todo => ({
+      ...todo,
+      id: todo._id.toString(),
+      _id: undefined
+    }));
+    
+    res.json(transformedTodos);
   } catch (error) {
     next(error);
   }
@@ -60,7 +67,15 @@ router.post('/', csrfProtection, requireAuth, validateCreateTodo, async (req: Re
     
     await todo.save();
     
-    res.status(201).json(todo.toJSON());
+    // Transform _id to id for frontend compatibility
+    const todoJson = todo.toJSON();
+    const response = {
+      ...todoJson,
+      id: todoJson._id,
+      _id: undefined
+    };
+    
+    res.status(201).json(response);
   } catch (error) {
     if (error instanceof mongoose.Error.ValidationError) {
       return res.status(400).json({
@@ -74,10 +89,10 @@ router.post('/', csrfProtection, requireAuth, validateCreateTodo, async (req: Re
 });
 
 /**
- * PATCH /api/todos/:id
+ * PUT /api/todos/:id
  * Update todo
  */
-router.patch('/:id', csrfProtection, requireAuth, validateUpdateTodo, async (req: Request, res: Response, next: NextFunction) => {
+router.put('/:id', csrfProtection, requireAuth, validateUpdateTodo, async (req: Request, res: Response, next: NextFunction) => {
   const userId = req.user?.id;
   const { id } = req.params;
   
@@ -131,7 +146,15 @@ router.patch('/:id', csrfProtection, requireAuth, validateUpdateTodo, async (req
     
     await todo.save();
     
-    res.json(todo.toJSON());
+    // Transform _id to id for frontend compatibility
+    const todoJson = todo.toJSON();
+    const response = {
+      ...todoJson,
+      id: todoJson._id,
+      _id: undefined
+    };
+    
+    res.json(response);
   } catch (error) {
     if (error instanceof mongoose.Error.ValidationError) {
       return res.status(400).json({
@@ -193,6 +216,72 @@ router.delete('/:id', csrfProtection, requireAuth, async (req: Request, res: Res
 });
 
 /**
+ * PATCH /api/todos/:id/status
+ * Update todo status (for drag & drop)
+ */
+router.patch('/:id/status', csrfProtection, requireAuth, async (req: Request, res: Response, next: NextFunction) => {
+  const userId = req.user?.id;
+  const { id } = req.params;
+  const { status } = req.body;
+  
+  if (!userId) {
+    return res.status(401).json({ 
+      error: 'unauthorized',
+      message: 'Invalid token' 
+    });
+  }
+  
+  // Validate MongoDB ObjectId
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return res.status(400).json({
+      error: 'validation_error',
+      message: 'Invalid todo ID format',
+    });
+  }
+  
+  // Validate status
+  if (!status || !['todo', 'in_progress', 'done'].includes(status)) {
+    return res.status(400).json({
+      error: 'validation_error',
+      message: 'Invalid status value',
+    });
+  }
+  
+  try {
+    const todo = await Todo.findById(id);
+    
+    if (!todo) {
+      return res.status(404).json({ 
+        error: 'not_found',
+        message: 'Todo not found' 
+      });
+    }
+    
+    if (todo.userId !== userId) {
+      return res.status(403).json({ 
+        error: 'forbidden',
+        message: 'You do not have permission to update this todo' 
+      });
+    }
+    
+    todo.status = status;
+    await todo.save();
+    
+    // Transform _id to id for frontend compatibility
+    const todoJson = todo.toJSON();
+    const response = {
+      ...todoJson,
+      id: todoJson._id,
+      _id: undefined
+    };
+    
+    res.json(response);
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
  * PATCH /api/todos/:id/move
  * Move todo to different status/position (for drag & drop)
  */
@@ -240,7 +329,15 @@ router.patch('/:id/move', csrfProtection, requireAuth, validateMoveTodo, async (
     
     await todo.save();
     
-    res.json(todo.toJSON());
+    // Transform _id to id for frontend compatibility
+    const todoJson = todo.toJSON();
+    const response = {
+      ...todoJson,
+      id: todoJson._id,
+      _id: undefined
+    };
+    
+    res.json(response);
   } catch (error) {
     if (error instanceof mongoose.Error.ValidationError) {
       return res.status(400).json({

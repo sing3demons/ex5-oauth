@@ -1,0 +1,425 @@
+### Backend API Testing
+### Use REST Client extension in VS Code to run these requests
+### https://marketplace.visualstudio.com/items?itemName=humao.rest-client
+
+@baseUrl = http://localhost:4000
+@oauth2Server = http://localhost:8080
+
+### Variables (Update these after getting tokens)
+@accessToken = YOUR_ACCESS_TOKEN_HERE
+@refreshToken = YOUR_REFRESH_TOKEN_HERE
+@todoId = YOUR_TODO_ID_HERE
+
+###############################################
+# Health Check
+###############################################
+
+### Health Check
+GET {{baseUrl}}/health
+
+###############################################
+# Authentication Flow
+###############################################
+
+### 1. Initiate Login (Get Authorization URL)
+# @name authUrl
+GET {{baseUrl}}/auth/login
+
+###
+@resAuthUrl = {{authUrl.response.body.authorization_url}}
+
+###
+# @name xSessionId
+###
+GET {{resAuthUrl}} HTTP/1.1
+
+###
+@sessionId = {{xSessionId.response.headers.x-session-id}}
+
+###
+# @name loginResponse
+POST {{oauth2Server}}/auth/login HTTP/1.1
+Content-Type: application/json
+
+{
+  "username": "test@example.com",
+  "password": "password123",
+  "session_id": "{{sessionId}}"
+}
+
+###
+@location = {{loginResponse.response.headers.location}}
+@cookies = {{loginResponse.response.headers.set-cookie}}
+
+### with cookies
+# @name oauthCallback
+GET {{location}}&response_mode=json HTTP/1.1
+Cookie: {{cookies}}
+
+### Extract tokens from callback response
+@accessToken = {{oauthCallback.response.body.access_token}}
+@refreshToken = {{oauthCallback.response.body.refresh_token}}
+@idToken = {{oauthCallback.response.body.id_token}}
+
+
+### 2. Get OIDC Discovery Document
+GET {{baseUrl}}/auth/discovery
+
+### 3. Get JWKS
+GET {{baseUrl}}/auth/jwks
+
+### 4. OAuth2 Callback (Simulated - normally done by browser)
+# Note: You need to get the 'code' and 'state' from OAuth2 server
+GET {{baseUrl}}/auth/callback?code=AUTHORIZATION_CODE&state=STATE_VALUE
+
+### 5. Get User Info (Requires Access Token)
+GET {{baseUrl}}/auth/userinfo
+Authorization: Bearer {{accessToken}}
+
+### 6. Refresh Access Token (Requires Refresh Token Cookie)
+POST {{baseUrl}}/auth/refresh
+Cookie: refresh_token={{refreshToken}}
+
+### 7. Get Session Info (Requires Refresh Token Cookie)
+GET {{baseUrl}}/auth/session
+Cookie: refresh_token={{refreshToken}}
+
+### 8. Validate ID Token
+POST {{baseUrl}}/auth/validate-token
+Content-Type: application/json
+
+{
+  "id_token": "YOUR_ID_TOKEN_HERE"
+}
+
+### 9. Decode Token (For Debugging)
+POST {{baseUrl}}/auth/decode-token
+Content-Type: application/json
+
+{
+  "token": "YOUR_JWT_TOKEN_HERE"
+}
+
+### 10. Logout
+POST {{baseUrl}}/auth/logout
+Cookie: refresh_token={{refreshToken}}
+
+###############################################
+# CSRF Token
+###############################################
+
+### Get CSRF Token
+GET {{baseUrl}}/csrf-token
+
+###############################################
+# Todos API (Requires Authentication)
+###############################################
+
+### 1. Get All Todos
+GET {{baseUrl}}/api/todos
+Authorization: Bearer {{accessToken}}
+
+### 2. Create Todo
+POST {{baseUrl}}/api/todos
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "title": "Test Todo from REST Client",
+  "description": "This is a test todo created via REST Client",
+  "status": "todo",
+  "priority": "medium"
+}
+
+### 3. Create Todo with High Priority
+POST {{baseUrl}}/api/todos
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "title": "Urgent Task",
+  "description": "This needs to be done ASAP",
+  "status": "todo",
+  "priority": "high"
+}
+
+### 4. Get Specific Todo
+GET {{baseUrl}}/api/todos/{{todoId}}
+Authorization: Bearer {{accessToken}}
+
+### 5. Update Todo (Full Update)
+PUT {{baseUrl}}/api/todos/{{todoId}}
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "title": "Updated Todo Title",
+  "description": "Updated description",
+  "priority": "high"
+}
+
+### 6. Update Todo Status (Drag & Drop)
+PATCH {{baseUrl}}/api/todos/{{todoId}}/status
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "status": "in_progress"
+}
+
+### 7. Move Todo to Done
+PATCH {{baseUrl}}/api/todos/{{todoId}}/status
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "status": "done"
+}
+
+### 8. Move Todo with Position
+PATCH {{baseUrl}}/api/todos/{{todoId}}/move
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "status": "in_progress",
+  "position": 0
+}
+
+### 9. Delete Todo
+DELETE {{baseUrl}}/api/todos/{{todoId}}
+Authorization: Bearer {{accessToken}}
+
+###############################################
+# Error Cases
+###############################################
+
+### Unauthorized - No Token
+GET {{baseUrl}}/api/todos
+
+### Unauthorized - Invalid Token
+GET {{baseUrl}}/api/todos
+Authorization: Bearer invalid_token_12345
+
+### Create Todo - Missing Title
+POST {{baseUrl}}/api/todos
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "description": "No title provided"
+}
+
+### Create Todo - Invalid Status
+POST {{baseUrl}}/api/todos
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "title": "Test",
+  "status": "invalid_status"
+}
+
+### Update Todo - Invalid ID
+PUT {{baseUrl}}/api/todos/invalid_id
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "title": "Updated"
+}
+
+### Update Status - Invalid Status
+PATCH {{baseUrl}}/api/todos/{{todoId}}/status
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "status": "invalid_status"
+}
+
+###############################################
+# Complete Flow Example
+###############################################
+
+### Step 1: Get Authorization URL
+# @name login
+GET {{baseUrl}}/auth/login
+
+### Step 2: Visit the authorization URL in browser and complete OAuth2 flow
+# The callback will redirect to frontend with access_token
+
+### Step 3: Use the access token to get todos
+# @name getTodos
+GET {{baseUrl}}/api/todos
+Authorization: Bearer {{accessToken}}
+
+### Step 4: Create a new todo
+# @name createTodo
+POST {{baseUrl}}/api/todos
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "title": "Complete Project Documentation",
+  "description": "Write comprehensive documentation for the OAuth2 BFF project",
+  "status": "todo",
+  "priority": "high"
+}
+
+### Step 5: Extract todo ID from response and update it
+# Update the @todoId variable above with the ID from createTodo response
+
+### Step 6: Move todo to in_progress
+PATCH {{baseUrl}}/api/todos/{{todoId}}/status
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "status": "in_progress"
+}
+
+### Step 7: Update todo details
+PUT {{baseUrl}}/api/todos/{{todoId}}
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "title": "Complete Project Documentation ✓",
+  "description": "Write comprehensive documentation for the OAuth2 BFF project - In Progress",
+  "priority": "high"
+}
+
+### Step 8: Mark as done
+PATCH {{baseUrl}}/api/todos/{{todoId}}/status
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "status": "done"
+}
+
+### Step 9: Delete todo
+DELETE {{baseUrl}}/api/todos/{{todoId}}
+Authorization: Bearer {{accessToken}}
+
+### Step 10: Logout
+POST {{baseUrl}}/auth/logout
+Cookie: refresh_token={{refreshToken}}
+
+###############################################
+# Bulk Operations (For Testing)
+###############################################
+
+### Create Multiple Todos
+# @name createTodo1
+POST {{baseUrl}}/api/todos
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "title": "Design Database Schema",
+  "description": "Create ERD and define relationships",
+  "status": "todo",
+  "priority": "high"
+}
+
+###
+
+# @name createTodo2
+POST {{baseUrl}}/api/todos
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "title": "Implement Authentication",
+  "description": "Set up OAuth2 with PKCE",
+  "status": "in_progress",
+  "priority": "high"
+}
+
+###
+
+# @name createTodo3
+POST {{baseUrl}}/api/todos
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "title": "Write Unit Tests",
+  "description": "Achieve 80% code coverage",
+  "status": "todo",
+  "priority": "medium"
+}
+
+###
+
+# @name createTodo4
+POST {{baseUrl}}/api/todos
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "title": "Setup CI/CD Pipeline",
+  "description": "Configure GitHub Actions",
+  "status": "done",
+  "priority": "medium"
+}
+
+###
+
+# @name createTodo5
+POST {{baseUrl}}/api/todos
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "title": "Code Review",
+  "description": "Review pull requests",
+  "status": "todo",
+  "priority": "low"
+}
+
+###############################################
+# Performance Testing
+###############################################
+
+### Get All Todos (Check Response Time)
+GET {{baseUrl}}/api/todos
+Authorization: Bearer {{accessToken}}
+
+### Create Todo (Check Response Time)
+POST {{baseUrl}}/api/todos
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "title": "Performance Test Todo",
+  "description": "Testing API response time",
+  "status": "todo",
+  "priority": "low"
+}
+
+###############################################
+# Notes
+###############################################
+
+# How to use this file:
+# 1. Install REST Client extension in VS Code
+# 2. Start backend server: npm run dev
+# 3. Start OAuth2 server on port 8080
+# 4. Click "Send Request" above any ### line
+# 5. Update @accessToken and @todoId variables after getting them
+#
+# To get access token:
+# 1. Run the "Initiate Login" request
+# 2. Visit the authorization_url in browser
+# 3. Complete OAuth2 flow
+# 4. Copy access_token from callback URL
+# 5. Update @accessToken variable above
+#
+# Tips:
+# - Use @name to save response and reference it later
+# - Use {{$randomInt}} for random numbers
+# - Use {{$timestamp}} for current timestamp
+# - Use {{$guid}} for random GUID

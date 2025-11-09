@@ -51,6 +51,8 @@ func (h *OAuthHandler) Authorize(w http.ResponseWriter, r *http.Request) {
 	codeChallenge := r.URL.Query().Get("code_challenge")
 	challengeMethod := r.URL.Query().Get("code_challenge_method")
 	prompt := r.URL.Query().Get("prompt")
+	// from headers
+	sessionID := r.Header.Get("X-Session-ID")
 
 	// Validate nonce length (max 512 characters as per OIDC spec)
 	if len(nonce) > 512 {
@@ -175,7 +177,7 @@ func (h *OAuthHandler) Authorize(w http.ResponseWriter, r *http.Request) {
 	if ssoSession != nil && ssoSession.Authenticated {
 		// Parse scopes for consent check
 		requestedScopes := strings.Split(scope, " ")
-		
+
 		// Check for existing user consent
 		hasConsent, err := h.consentRepo.HasConsent(ctx, ssoSession.UserID, clientID, requestedScopes)
 		if err != nil {
@@ -245,12 +247,13 @@ func (h *OAuthHandler) Authorize(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// No SSO session or no consent - create OAuth session and redirect to login
-	sessionID, err := utils.GenerateRandomString(32)
-	if err != nil {
-		respondError(w, http.StatusInternalServerError, "server_error", "Failed to generate session")
-		return
+	if sessionID == "" {
+		sessionID, err = utils.GenerateRandomString(32)
+		if err != nil {
+			respondError(w, http.StatusInternalServerError, "server_error", "Failed to generate session")
+			return
+		}
 	}
-
 	session := &models.Session{
 		SessionID:       sessionID,
 		ClientID:        clientID,
@@ -365,7 +368,7 @@ func (h *OAuthHandler) handleAuthorizationCodeGrant(w http.ResponseWriter, r *ht
 
 	// Validate scopes from authorization code (already validated during authorization)
 	// Scopes are stored in authCode.Scope
-	
+
 	// Generate access token with scope claim only (no user claims)
 	accessToken, err := utils.GenerateAccessToken(
 		user.ID,
@@ -442,7 +445,7 @@ func (h *OAuthHandler) handleRefreshTokenGrant(w http.ResponseWriter, r *http.Re
 	if userID == "" {
 		userID = claims.Subject
 	}
-	
+
 	user, err := h.userRepo.FindByID(ctx, userID)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "server_error", "Failed to find user")
@@ -461,7 +464,7 @@ func (h *OAuthHandler) handleRefreshTokenGrant(w http.ResponseWriter, r *http.Re
 			return
 		}
 		scope = utils.NormalizeScope(scope)
-		
+
 		// Validate requested scopes against original scopes (scope downgrade validation)
 		// Return invalid_scope error if trying to escalate scopes
 		if err := utils.ValidateScopeDowngrade(scope, claims.Scope); err != nil {
@@ -529,7 +532,7 @@ func (h *OAuthHandler) handleClientCredentialsGrant(w http.ResponseWriter, r *ht
 		}
 		scope = utils.NormalizeScope(scope)
 	}
-	
+
 	// Validate requested scopes against client's AllowedScopes
 	if err := utils.GlobalScopeValidator.ValidateScopeAgainstAllowed(scope, client.AllowedScopes); err != nil {
 		respondError(w, http.StatusBadRequest, "invalid_scope", err.Error())
@@ -568,7 +571,7 @@ func (h *OAuthHandler) UserInfo(w http.ResponseWriter, r *http.Request) {
 	}
 
 	tokenString := strings.TrimPrefix(authHeader, "Bearer ")
-	
+
 	var scope string
 	var userID string
 
@@ -601,7 +604,7 @@ func (h *OAuthHandler) UserInfo(w http.ResponseWriter, r *http.Request) {
 
 	// Filter claims based on scope using claim filtering service
 	filteredClaims := utils.FilterClaimsForUser(user, scope)
-	
+
 	respondJSON(w, http.StatusOK, filteredClaims)
 }
 

@@ -1,7 +1,6 @@
 import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
-import session from 'express-session';
 import helmet from 'helmet';
 import dotenv from 'dotenv';
 import authRoutes from './routes/auth';
@@ -20,20 +19,9 @@ app.use(helmet());
 // Middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use(cookieParser());
 
-// Session middleware
-app.use(session({
-  secret: process.env.SESSION_SECRET || 'change-this-secret-in-production',
-  resave: false,
-  saveUninitialized: false,
-  cookie: {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
-    maxAge: 10 * 60 * 1000, // 10 minutes for OAuth flow
-  },
-}));
+// Cookie parser with secret for signed cookies
+app.use(cookieParser(process.env.SESSION_SECRET || 'change-this-secret-in-production'));
 
 // CORS configuration - Properly configured with environment variables
 app.use(cors({
