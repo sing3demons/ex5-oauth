@@ -1,16 +1,22 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import axios from 'axios';
 import { User, AuthContextType, TokenInfo } from '../types';
+import { setAccessToken as setApiAccessToken, fetchCsrfToken, setCsrfToken } from '../services/api';
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const BFF_URL = import.meta.env.VITE_BFF_URL || 'http://localhost:3001';
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const refreshTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const refreshTimerRef = useRef<number | null>(null);
+
+  // Update API token whenever accessToken changes
+  useEffect(() => {
+    setApiAccessToken(accessToken);
+  }, [accessToken]);
 
   // Auto-refresh token before expiry
   const scheduleTokenRefresh = useCallback((expiresIn: number) => {
@@ -38,7 +44,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const refreshToken = useCallback(async () => {
     try {
       const response = await axios.post<TokenInfo>(
-        `${BFF_URL}/auth/refresh`,
+        `${API_URL}/auth/refresh`,
         {},
         { withCredentials: true }
       );
@@ -61,7 +67,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const fetchUserInfo = async (token: string) => {
     try {
       const response = await axios.get<User>(
-        `${BFF_URL}/auth/userinfo`,
+        `${API_URL}/auth/userinfo`,
         {
           headers: { Authorization: `Bearer ${token}` },
           withCredentials: true
@@ -74,11 +80,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // Login - redirect to BFF
+  // Login - redirect to backend
   const login = useCallback(async () => {
     try {
       const response = await axios.get<{ authorization_url: string }>(
-        `${BFF_URL}/auth/login`,
+        `${API_URL}/auth/login`,
         { withCredentials: true }
       );
       
@@ -97,9 +103,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         clearTimeout(refreshTimerRef.current);
       }
 
-      // Call BFF logout
+      // Call backend logout
       await axios.post(
-        `${BFF_URL}/auth/logout`,
+        `${API_URL}/auth/logout`,
         {},
         { withCredentials: true }
       );
@@ -108,6 +114,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setAccessToken(null);
       setUser(null);
       
+      // Clear CSRF token
+      setCsrfToken(null);
+      
       // Broadcast logout to other tabs
       localStorage.setItem('logout', Date.now().toString());
     } catch (error) {
@@ -115,41 +124,45 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  // Handle OAuth callback
+  // Handle OAuth callback and initial token check
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const accessTokenParam = params.get('access_token');
-    const expiresInParam = params.get('expires_in');
-    const error = params.get('error');
+    const initializeAuth = async () => {
+      // Fetch CSRF token on initialization
+      try {
+        await fetchCsrfToken();
+      } catch (error) {
+        console.error('Failed to fetch CSRF token on init:', error);
+      }
 
-    if (error) {
-      console.error('OAuth error:', error);
-      setIsLoading(false);
-      return;
-    }
+      const params = new URLSearchParams(window.location.search);
+      const accessTokenParam = params.get('access_token');
+      const expiresInParam = params.get('expires_in');
 
-    if (accessTokenParam && expiresInParam) {
-      // Store token
-      setAccessToken(accessTokenParam);
-      
-      // Schedule refresh
-      scheduleTokenRefresh(parseInt(expiresInParam));
-      
-      // Fetch user info
-      fetchUserInfo(accessTokenParam).finally(() => {
-        setIsLoading(false);
-      });
-
-      // Clean URL
-      window.history.replaceState({}, document.title, window.location.pathname);
-    } else {
-      // Try to refresh token on mount
-      refreshToken()
-        .catch(() => {
-          // No valid refresh token
+      if (accessTokenParam && expiresInParam) {
+        // Store token from callback
+        setAccessToken(accessTokenParam);
+        
+        // Schedule refresh
+        scheduleTokenRefresh(parseInt(expiresInParam));
+        
+        // Fetch user info
+        fetchUserInfo(accessTokenParam).finally(() => {
           setIsLoading(false);
         });
-    }
+
+        // Clean URL
+        window.history.replaceState({}, document.title, window.location.pathname);
+      } else {
+        // Try to refresh token on mount (check for existing session)
+        refreshToken()
+          .catch(() => {
+            // No valid refresh token
+            setIsLoading(false);
+          });
+      }
+    };
+
+    initializeAuth();
   }, [scheduleTokenRefresh, refreshToken]);
 
   // Listen for logout events from other tabs
@@ -158,6 +171,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (e.key === 'logout') {
         setAccessToken(null);
         setUser(null);
+        setCsrfToken(null);
         if (refreshTimerRef.current) {
           clearTimeout(refreshTimerRef.current);
         }

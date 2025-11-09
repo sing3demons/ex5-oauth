@@ -1,15 +1,50 @@
+import { useEffect, useState } from 'react';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 export default function Login() {
-  const { login } = useAuth();
+  const { login, isAuthenticated } = useAuth();
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    // Redirect if already authenticated
+    if (isAuthenticated) {
+      navigate('/dashboard', { replace: true });
+    }
+
+    // Check for error in URL
+    const errorParam = searchParams.get('error');
+    if (errorParam) {
+      const errorMessages: Record<string, string> = {
+        access_denied: 'Access was denied. Please try again.',
+        invalid_request: 'Invalid request. Please try again.',
+        server_error: 'Server error occurred. Please try again later.',
+      };
+      setError(errorMessages[errorParam] || 'An error occurred during login.');
+    }
+  }, [isAuthenticated, navigate, searchParams]);
+
+  const handleLogin = () => {
+    setError(null);
+    login();
+  };
 
   return (
     <div style={styles.container}>
       <div style={styles.card}>
-        <h1 style={styles.title}>🔐 OAuth2 BFF Demo</h1>
+        <h1 style={styles.title}>🔐 Todo App with SSO</h1>
         <p style={styles.subtitle}>
-          Secure authentication with Backend-for-Frontend pattern
+          Secure authentication with OAuth2/OIDC
         </p>
+        
+        {error && (
+          <div style={styles.errorBanner}>
+            <span style={styles.errorIcon}>⚠️</span>
+            <span>{error}</span>
+          </div>
+        )}
         
         <div style={styles.features}>
           <div style={styles.feature}>
@@ -30,7 +65,7 @@ export default function Login() {
           </div>
         </div>
 
-        <button onClick={login} style={styles.button}>
+        <button onClick={handleLogin} style={styles.button}>
           Login with OAuth2
         </button>
 
@@ -107,5 +142,20 @@ const styles = {
     color: '#999',
     textAlign: 'center' as const,
     margin: 0
+  },
+  errorBanner: {
+    display: 'flex',
+    alignItems: 'center',
+    padding: '12px 16px',
+    marginBottom: '20px',
+    background: '#fee',
+    border: '1px solid #fcc',
+    borderRadius: '8px',
+    color: '#c33',
+    fontSize: '14px',
+  },
+  errorIcon: {
+    marginRight: '8px',
+    fontSize: '18px',
   }
 };

@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { Todo } from '../types/todo';
+import { Todo, TodoPriority } from '../types/todo';
+import TodoForm from './TodoForm';
 
 interface TodoCardProps {
   todo: Todo;
@@ -12,8 +13,6 @@ interface TodoCardProps {
 
 export default function TodoCard({ todo, isDragging, onDelete, onUpdate }: TodoCardProps) {
   const [isEditing, setIsEditing] = useState(false);
-  const [title, setTitle] = useState(todo.title);
-  const [description, setDescription] = useState(todo.description || '');
 
   const {
     attributes,
@@ -22,27 +21,26 @@ export default function TodoCard({ todo, isDragging, onDelete, onUpdate }: TodoC
     transform,
     transition,
     isDragging: isSortableDragging
-  } = useSortable({ id: todo.id });
+  } = useSortable({
+    id: todo.id,
+    disabled: isEditing, // Disable dragging while editing
+  });
 
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
-    opacity: isSortableDragging ? 0.5 : 1
+    opacity: isSortableDragging ? 0.5 : 1,
+    cursor: isEditing ? 'default' : 'grab',
   };
 
-  const handleSave = () => {
-    if (onUpdate && title.trim()) {
-      onUpdate(todo.id, {
-        title: title.trim(),
-        description: description.trim()
-      });
+  const handleUpdate = (data: { title: string; description?: string; priority?: TodoPriority }) => {
+    if (onUpdate) {
+      onUpdate(todo.id, data);
       setIsEditing(false);
     }
   };
 
   const handleCancel = () => {
-    setTitle(todo.title);
-    setDescription(todo.description || '');
     setIsEditing(false);
   };
 
@@ -54,30 +52,16 @@ export default function TodoCard({ todo, isDragging, onDelete, onUpdate }: TodoC
 
   if (isEditing) {
     return (
-      <div ref={setNodeRef} style={{ ...styles.card, ...style }}>
-        <input
-          type="text"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          style={styles.input}
-          placeholder="Task title"
-          autoFocus
+      <div 
+        ref={setNodeRef} 
+        style={style}
+        className="bg-white rounded-lg p-3 md:p-4 mb-3 shadow-sm border-2 border-transparent cursor-default"
+      >
+        <TodoForm
+          initialData={todo}
+          onSubmit={handleUpdate}
+          onCancel={handleCancel}
         />
-        <textarea
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          style={styles.textarea}
-          placeholder="Description (optional)"
-          rows={3}
-        />
-        <div style={styles.editActions}>
-          <button onClick={handleSave} style={styles.saveButton}>
-            Save
-          </button>
-          <button onClick={handleCancel} style={styles.cancelButton}>
-            Cancel
-          </button>
-        </div>
       </div>
     );
   }
@@ -85,30 +69,29 @@ export default function TodoCard({ todo, isDragging, onDelete, onUpdate }: TodoC
   return (
     <div
       ref={setNodeRef}
-      style={{
-        ...styles.card,
-        ...style,
-        ...(isDragging ? styles.cardDragging : {})
-      }}
+      style={style}
+      className={`bg-white rounded-lg p-3 md:p-4 mb-3 shadow-sm transition-all border-2 border-transparent touch-none ${
+        isDragging || isSortableDragging 
+          ? 'shadow-2xl rotate-2 scale-105 cursor-grabbing border-indigo-600 z-[1000]' 
+          : 'cursor-grab hover:shadow-md'
+      }`}
       {...attributes}
       {...listeners}
     >
-      <div style={styles.cardHeader}>
+      <div className="flex justify-between items-center mb-3">
         <div
-          style={{
-            ...styles.priorityBadge,
-            background: priorityColors[todo.priority]
-          }}
+          className="text-[10px] md:text-xs font-bold text-white px-2 py-1 rounded uppercase"
+          style={{ background: priorityColors[todo.priority] }}
         >
           {todo.priority}
         </div>
-        <div style={styles.actions}>
+        <div className="flex gap-2">
           <button
             onClick={(e) => {
               e.stopPropagation();
               setIsEditing(true);
             }}
-            style={styles.actionButton}
+            className="bg-none border-none cursor-pointer text-base md:text-lg p-2 opacity-60 hover:opacity-100 transition-opacity touch-manipulation min-w-[44px] min-h-[44px] md:min-w-0 md:min-h-0 flex items-center justify-center"
             title="Edit"
           >
             ✏️
@@ -118,7 +101,7 @@ export default function TodoCard({ todo, isDragging, onDelete, onUpdate }: TodoC
               e.stopPropagation();
               onDelete?.(todo.id);
             }}
-            style={styles.actionButton}
+            className="bg-none border-none cursor-pointer text-base md:text-lg p-2 opacity-60 hover:opacity-100 transition-opacity touch-manipulation min-w-[44px] min-h-[44px] md:min-w-0 md:min-h-0 flex items-center justify-center"
             title="Delete"
           >
             🗑️
@@ -126,14 +109,18 @@ export default function TodoCard({ todo, isDragging, onDelete, onUpdate }: TodoC
         </div>
       </div>
 
-      <h4 style={styles.cardTitle}>{todo.title}</h4>
+      <h4 className="text-sm md:text-base font-bold m-0 mb-2 text-gray-800 break-words">
+        {todo.title}
+      </h4>
 
       {todo.description && (
-        <p style={styles.cardDescription}>{todo.description}</p>
+        <p className="text-xs md:text-sm text-gray-600 m-0 mb-3 leading-relaxed break-words">
+          {todo.description}
+        </p>
       )}
 
-      <div style={styles.cardFooter}>
-        <span style={styles.date}>
+      <div className="flex justify-between items-center pt-3 border-t border-gray-100">
+        <span className="text-[11px] md:text-xs text-gray-400">
           {new Date(todo.createdAt).toLocaleDateString()}
         </span>
       </div>
@@ -141,115 +128,4 @@ export default function TodoCard({ todo, isDragging, onDelete, onUpdate }: TodoC
   );
 }
 
-const styles = {
-  card: {
-    background: 'white',
-    borderRadius: '8px',
-    padding: '16px',
-    marginBottom: '12px',
-    boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-    cursor: 'grab',
-    transition: 'all 0.2s',
-    border: '2px solid transparent'
-  },
-  cardDragging: {
-    boxShadow: '0 8px 16px rgba(0,0,0,0.2)',
-    transform: 'rotate(2deg)',
-    cursor: 'grabbing'
-  },
-  cardHeader: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: '12px'
-  },
-  priorityBadge: {
-    fontSize: '11px',
-    fontWeight: 'bold',
-    color: 'white',
-    padding: '4px 8px',
-    borderRadius: '4px',
-    textTransform: 'uppercase' as const
-  },
-  actions: {
-    display: 'flex',
-    gap: '8px'
-  },
-  actionButton: {
-    background: 'none',
-    border: 'none',
-    cursor: 'pointer',
-    fontSize: '16px',
-    padding: '4px',
-    opacity: 0.6,
-    transition: 'opacity 0.2s'
-  },
-  cardTitle: {
-    fontSize: '16px',
-    fontWeight: 'bold',
-    margin: '0 0 8px 0',
-    color: '#333',
-    wordBreak: 'break-word' as const
-  },
-  cardDescription: {
-    fontSize: '14px',
-    color: '#666',
-    margin: '0 0 12px 0',
-    lineHeight: '1.5',
-    wordBreak: 'break-word' as const
-  },
-  cardFooter: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingTop: '12px',
-    borderTop: '1px solid #f0f0f0'
-  },
-  date: {
-    fontSize: '12px',
-    color: '#999'
-  },
-  input: {
-    width: '100%',
-    padding: '12px',
-    fontSize: '16px',
-    border: '2px solid #667eea',
-    borderRadius: '8px',
-    marginBottom: '12px',
-    outline: 'none'
-  },
-  textarea: {
-    width: '100%',
-    padding: '12px',
-    fontSize: '14px',
-    border: '2px solid #e0e0e0',
-    borderRadius: '8px',
-    marginBottom: '12px',
-    outline: 'none',
-    fontFamily: 'inherit',
-    resize: 'vertical' as const
-  },
-  editActions: {
-    display: 'flex',
-    gap: '8px',
-    justifyContent: 'flex-end'
-  },
-  saveButton: {
-    padding: '8px 16px',
-    background: '#667eea',
-    color: 'white',
-    border: 'none',
-    borderRadius: '6px',
-    cursor: 'pointer',
-    fontWeight: 'bold'
-  },
-  cancelButton: {
-    padding: '8px 16px',
-    background: '#e0e0e0',
-    color: '#333',
-    border: 'none',
-    borderRadius: '6px',
-    cursor: 'pointer',
-    fontWeight: 'bold'
-  }
-};
+

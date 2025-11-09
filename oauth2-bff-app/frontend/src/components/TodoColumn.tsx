@@ -9,30 +9,56 @@ interface TodoColumnProps {
   todos: Todo[];
   onDelete: (id: string) => void;
   onUpdate: (id: string, data: any) => void;
+  onAddClick?: () => void;
 }
 
-export default function TodoColumn({ id, title, todos, onDelete, onUpdate }: TodoColumnProps) {
-  const { setNodeRef, isOver } = useDroppable({ id });
+export default function TodoColumn({ id, title, todos, onDelete, onUpdate, onAddClick }: TodoColumnProps) {
+  const { setNodeRef, isOver } = useDroppable({
+    id,
+    data: {
+      type: 'column',
+      status: id,
+    },
+  });
+  const showAddButton = id === 'todo' && onAddClick;
 
   return (
-    <div style={styles.column}>
-      <div style={styles.header}>
-        <h3 style={styles.title}>{title}</h3>
-        <span style={styles.count}>{todos.length}</span>
+    <div className="bg-white/95 rounded-xl p-4 md:p-5 lg:p-6 min-h-[400px] md:min-h-[500px] flex flex-col shadow-md">
+      <div className="flex justify-between items-center mb-4 md:mb-5 pb-3 md:pb-4 border-b-2 border-gray-200 flex-wrap gap-2">
+        <div className="flex items-center gap-3">
+          <h3 className="text-base md:text-lg font-bold m-0 text-gray-800">
+            {title}
+          </h3>
+          <span className="bg-indigo-600 text-white rounded-xl px-3 py-1 text-xs md:text-sm font-bold">
+            {todos.length}
+          </span>
+        </div>
+        {showAddButton && (
+          <button 
+            onClick={onAddClick} 
+            className="px-3 py-2 md:px-4 md:py-2 text-xs md:text-sm font-bold bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-all touch-manipulation min-h-[44px] md:min-h-0"
+            title="Add new task"
+          >
+            + Add
+          </button>
+        )}
       </div>
 
       <SortableContext items={todos.map(t => t.id)} strategy={verticalListSortingStrategy}>
         <div
           ref={setNodeRef}
-          style={{
-            ...styles.dropZone,
-            ...(isOver ? styles.dropZoneActive : {})
-          }}
+          className={`flex-1 min-h-[350px] md:min-h-[400px] transition-all duration-200 rounded-lg p-2 border-2 ${
+            isOver 
+              ? 'bg-indigo-50 border-indigo-400 border-dashed shadow-inner' 
+              : 'border-transparent'
+          }`}
         >
           {todos.length === 0 ? (
-            <div style={styles.empty}>
-              <p>No tasks yet</p>
-              <p style={styles.emptyHint}>Drag tasks here</p>
+            <div className="flex flex-col items-center justify-center h-full text-gray-400 text-center">
+              <p className="text-base md:text-lg mb-2">No tasks yet</p>
+              <p className="text-sm md:text-base">
+                {showAddButton ? 'Click "+ Add" to create a task' : 'Drag tasks here'}
+              </p>
             </div>
           ) : (
             todos.map(todo => (
@@ -50,60 +76,4 @@ export default function TodoColumn({ id, title, todos, onDelete, onUpdate }: Tod
   );
 }
 
-const styles = {
-  column: {
-    background: 'rgba(255,255,255,0.95)',
-    borderRadius: '12px',
-    padding: '20px',
-    minHeight: '500px',
-    display: 'flex',
-    flexDirection: 'column' as const,
-    boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
-  },
-  header: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: '20px',
-    paddingBottom: '15px',
-    borderBottom: '2px solid #e0e0e0'
-  },
-  title: {
-    fontSize: '18px',
-    fontWeight: 'bold',
-    margin: 0,
-    color: '#333'
-  },
-  count: {
-    background: '#667eea',
-    color: 'white',
-    borderRadius: '12px',
-    padding: '4px 12px',
-    fontSize: '14px',
-    fontWeight: 'bold'
-  },
-  dropZone: {
-    flex: 1,
-    minHeight: '400px',
-    transition: 'background 0.2s',
-    borderRadius: '8px',
-    padding: '8px'
-  },
-  dropZoneActive: {
-    background: 'rgba(102, 126, 234, 0.1)',
-    border: '2px dashed #667eea'
-  },
-  empty: {
-    display: 'flex',
-    flexDirection: 'column' as const,
-    alignItems: 'center',
-    justifyContent: 'center',
-    height: '100%',
-    color: '#999',
-    textAlign: 'center' as const
-  },
-  emptyHint: {
-    fontSize: '14px',
-    marginTop: '10px'
-  }
-};
+
