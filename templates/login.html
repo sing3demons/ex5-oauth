@@ -199,6 +199,8 @@
     </div>
 
     <script>
+        // Note: This is OAuth2 server template, not part of the BFF application
+        // The form submits to OAuth2 server, which then redirects to BFF callback
         document.getElementById('loginForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             
@@ -216,7 +218,8 @@
                 const response = await fetch('/auth/login', {
                     method: 'POST',
                     headers: {
-                        'Content-Type': 'application/json'
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
                     },
                     body: JSON.stringify(data)
                 });
@@ -225,8 +228,10 @@
 
                 if (response.ok) {
                     // Redirect to callback URL
+                    // This will be the BFF callback URL with authorization code
                     if (result.redirect_uri) {
-                        window.location.href = result.redirect_uri;
+                        // Use window.location.replace to avoid CORS issues
+                        window.location.replace(result.redirect_uri);
                     } else {
                         errorDiv.textContent = 'เกิดข้อผิดพลาด: ไม่พบ redirect URI';
                         errorDiv.classList.add('show');

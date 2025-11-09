@@ -2,6 +2,7 @@ import express, { Request, Response } from 'express';
 import axios from 'axios';
 import { generateState, generateCodeVerifier, generateCodeChallenge, validateState } from '../utils/pkce';
 import { generateNonce, validateIDToken, decodeJWT } from '../utils/oidc';
+import { encryptOAuthState, decryptOAuthState } from '../utils/crypto';
 import { requireRefreshToken } from '../middleware/auth';
 import { csrfProtection } from '../middleware/csrf';
 import { TokenResponse, UserInfo } from '../types';
@@ -20,28 +21,30 @@ router.get('/login', (req: Request, res: Response) => {
     const codeVerifier = generateCodeVerifier();
     const codeChallenge = generateCodeChallenge(codeVerifier);
 
-    // Store state, nonce, and code verifier in signed cookies for validation
-    // These cookies will expire in 10 minutes (OAuth flow timeout)
-    const cookieOptions = {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax' as const,
-      maxAge: 10 * 60 * 1000, // 10 minutes
-      signed: true // Use signed cookies for security
-    };
-
-    res.cookie('oauth_state', state, cookieOptions);
-    res.cookie('oauth_nonce', nonce, cookieOptions);
-    res.cookie('oauth_code_verifier', codeVerifier, cookieOptions);
-    res.cookie('oauth_redirect_uri', config.REDIRECT_URI, cookieOptions);
+    // Encrypt OAuth state data into the state parameter
+    // This eliminates the need for server-side storage or cookies
+    const encryptedState = encryptOAuthState({
+      state,
+      nonce,
+      codeVerifier,
+      redirectUri: config.REDIRECT_URI
+    });
+    
+    console.log('� Geneerated encrypted OAuth state:', { 
+      originalState: state, 
+      encryptedState: encryptedState.substring(0, 20) + '...',
+      nonce, 
+      codeVerifier: codeVerifier.substring(0, 10) + '...' 
+    });
 
     // Build authorization URL with OIDC and PKCE parameters
+    // Use encrypted state instead of plain state
     const authUrl = new URL(`${config.OAUTH2_SERVER}/oauth/authorize`);
     authUrl.searchParams.set('response_type', 'code');
     authUrl.searchParams.set('client_id', config.CLIENT_ID);
     authUrl.searchParams.set('redirect_uri', config.REDIRECT_URI);
     authUrl.searchParams.set('scope', 'openid profile email');
-    authUrl.searchParams.set('state', state);
+    authUrl.searchParams.set('state', encryptedState);
     authUrl.searchParams.set('nonce', nonce);
     authUrl.searchParams.set('code_challenge', codeChallenge);
     authUrl.searchParams.set('code_challenge_method', 'S256');
@@ -64,32 +67,46 @@ router.get('/login', (req: Request, res: Response) => {
  * Handle OAuth2 callback and exchange code for tokens with PKCE (Confidential Client)
  */
 router.get('/callback', async (req: Request, res: Response) => {
+  // Check if request wants JSON response (from fetch/axios)
+  const acceptsJson = req.headers.accept?.includes('application/json') || 
+                     req.query.response_mode === 'json';
+  
   try {
     const { code, state, error } = req.query;
 
     if (error) {
+      if (acceptsJson) {
+        return res.status(400).json({ error: error as string });
+      }
       return res.redirect(`${config.FRONTEND_URL}/callback?error=${error}`);
     }
 
     if (!code || !state) {
+      if (acceptsJson) {
+        return res.status(400).json({ error: 'invalid_request' });
+      }
       return res.redirect(`${config.FRONTEND_URL}/callback?error=invalid_request`);
     }
 
-    // Retrieve OAuth data from signed cookies
-    const storedState = req.signedCookies.oauth_state;
-    const storedNonce = req.signedCookies.oauth_nonce;
-    const storedRedirectUri = req.signedCookies.oauth_redirect_uri || "http://localhost:4000/auth/callback"
-      ;
-    const codeVerifier = req.signedCookies.oauth_code_verifier || "";
-
-    // Validate state parameter
-    if (!storedState || !validateState(state as string, storedState)) {
-      // return res.redirect(`${config.FRONTEND_URL}/callback?error=invalid_state`);
+    // Decrypt and validate OAuth state from the state parameter
+    const oauthState = decryptOAuthState(state as string);
+    
+    if (!oauthState) {
+      console.error('❌ Failed to decrypt or validate OAuth state');
+      if (acceptsJson) {
+        return res.status(400).json({ error: 'invalid_state' });
+      }
+      return res.redirect(`${config.FRONTEND_URL}/callback?error=invalid_state`);
     }
 
-    if (!storedRedirectUri || !codeVerifier) {
-      // return res.redirect(`${config.FRONTEND_URL}/callback?error=session_expired`);
-    }
+    console.log('🔓 Decrypted OAuth state:', {
+      originalState: oauthState.state,
+      nonce: oauthState.nonce,
+      codeVerifier: oauthState.codeVerifier.substring(0, 10) + '...',
+      age: Date.now() - oauthState.timestamp + 'ms'
+    });
+
+    const { nonce: storedNonce, codeVerifier, redirectUri: storedRedirectUri } = oauthState;
 
     const openidConfig = await axios.get(
       `${config.OAUTH2_SERVER}/.well-known/openid-configuration`
@@ -129,17 +146,14 @@ router.get('/callback', async (req: Request, res: Response) => {
 
       if (!validation.valid) {
         console.error('ID Token validation failed:', validation.error);
+        if (acceptsJson) {
+          return res.status(400).json({ error: 'invalid_id_token', message: validation.error });
+        }
         return res.redirect(`${config.FRONTEND_URL}/callback?error=invalid_id_token`);
       }
 
-      console.log('ID Token validated successfully:', validation.claims);
+      console.log('✅ ID Token validated successfully:', validation.claims);
     }
-
-    // Clear OAuth cookies
-    res.clearCookie('oauth_state');
-    res.clearCookie('oauth_nonce');
-    res.clearCookie('oauth_redirect_uri');
-    res.clearCookie('oauth_code_verifier');
 
     // Store refresh token in HttpOnly cookie
     if (tokens.refresh_token) {
@@ -152,25 +166,33 @@ router.get('/callback', async (req: Request, res: Response) => {
       });
     }
 
-    // Redirect to frontend callback with access token
-    const redirectUrl = new URL(`${config.FRONTEND_URL}/callback`);
-    redirectUrl.searchParams.set('access_token', tokens.access_token);
-    redirectUrl.searchParams.set('expires_in', tokens.expires_in.toString());
+    // Build frontend callback URL with tokens
+    const callbackUrl = new URL(`${config.FRONTEND_URL}/callback`);
+    callbackUrl.searchParams.set('access_token', tokens.access_token);
+    callbackUrl.searchParams.set('expires_in', tokens.expires_in.toString());
     if (tokens.id_token) {
-      redirectUrl.searchParams.set('id_token', tokens.id_token);
+      callbackUrl.searchParams.set('id_token', tokens.id_token);
     }
 
-    if (req.query?.response_mode === 'json') {
-      return res.json({
-        access_token: tokens.access_token,
-        expires_in: tokens.expires_in,
-        id_token: tokens.id_token
-      });
-    }
-
-    res.redirect(redirectUrl.toString());
+    // Always return JSON with redirect_uri
+    // OAuth2 server login page will handle the redirect
+    return res.json({
+      success: true,
+      redirect_uri: callbackUrl.toString(),
+      access_token: tokens.access_token,
+      expires_in: tokens.expires_in,
+      id_token: tokens.id_token,
+      token_type: tokens.token_type || 'Bearer'
+    });
   } catch (error: any) {
     console.error('Callback error:', error.response?.data || error.message);
+    
+    if (acceptsJson) {
+      return res.status(500).json({ 
+        error: 'token_exchange_failed',
+        message: error.response?.data?.error_description || error.message
+      });
+    }
     res.redirect(`${config.FRONTEND_URL}/callback?error=token_exchange_failed`);
   }
 });

@@ -24,18 +24,29 @@ app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser(process.env.SESSION_SECRET || 'change-this-secret-in-production'));
 
 // CORS configuration - Properly configured with environment variables
+console.log('🔒 CORS allowed origins:', config.CORS_ORIGINS);
+
 app.use(cors({
   origin: (origin, callback) => {
     // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) {
+      console.log('✅ CORS: Allowing request with no origin');
+      return callback(null, true);
+    }
+    
+    // For development: allow localhost origins
+    if (origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:')) {
+      console.log(`✅ CORS: Allowing localhost origin: ${origin}`);
       return callback(null, true);
     }
     
     // Check if origin is in allowed list
     if (config.CORS_ORIGINS.includes(origin)) {
+      console.log(`✅ CORS: Allowing origin: ${origin}`);
       callback(null, true);
     } else {
-      console.warn(`CORS blocked origin: ${origin}`);
+      console.warn(`❌ CORS blocked origin: ${origin}`);
+      console.warn(`   Allowed origins: ${config.CORS_ORIGINS.join(', ')}`);
       callback(new Error('Not allowed by CORS'));
     }
   },
