@@ -1,23 +1,32 @@
-export interface Todo {
-  id: string;
+import { TodoStatus } from '../models/Todo';
+
+export { TodoStatus };
+
+export interface TodoResponse {
+  _id: string;
   userId: string;
   title: string;
   description?: string;
-  status: 'todo' | 'in_progress' | 'done';
-  priority: 'low' | 'medium' | 'high';
+  status: TodoStatus;
+  position: number;
   createdAt: Date;
   updatedAt: Date;
 }
 
-export interface CreateTodoRequest {
+export interface CreateTodoDto {
   title: string;
   description?: string;
-  priority?: 'low' | 'medium' | 'high';
+  status?: TodoStatus;
 }
 
-export interface UpdateTodoRequest {
+export interface UpdateTodoDto {
   title?: string;
   description?: string;
-  status?: 'todo' | 'in_progress' | 'done';
-  priority?: 'low' | 'medium' | 'high';
+  status?: TodoStatus;
+  position?: number;
+}
+
+export interface MoveTodoDto {
+  status: TodoStatus;
+  position: number;
 }

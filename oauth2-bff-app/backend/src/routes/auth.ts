@@ -1,34 +1,34 @@
 import express, { Request, Response } from 'express';
 import axios from 'axios';
-import { generateState } from '../utils/pkce';
+import { generateState, generateCodeVerifier, generateCodeChallenge, validateState } from '../utils/pkce';
 import { generateNonce, validateIDToken, decodeJWT } from '../utils/oidc';
 import { requireRefreshToken } from '../middleware/auth';
+import { csrfProtection } from '../middleware/csrf';
 import { TokenResponse, UserInfo } from '../types';
 import config from '../config';
 
 const router = express.Router();
 
-
-// In-memory session store (use Redis in production)
-const sessions = new Map<string, any>();
-
 /**
  * GET /auth/login
- * Initiate OIDC authorization flow (Confidential Client)
+ * Initiate OAuth2 authorization flow with PKCE (Confidential Client)
  */
 router.get('/login', (req: Request, res: Response) => {
   try {
     const state = generateState();
     const nonce = generateNonce();
+    const codeVerifier = generateCodeVerifier();
+    const codeChallenge = generateCodeChallenge(codeVerifier);
     
-    // Store state and nonce in session for validation
-    sessions.set(state, {
-      redirect_uri: config.REDIRECT_URI,
-      nonce,
-      timestamp: Date.now()
-    });
+    // Store state, nonce, and code verifier in session for validation
+    req.session.state = state;
+    req.session.nonce = nonce;
+    req.session.redirect_uri = config.REDIRECT_URI;
+    req.session.timestamp = Date.now();
+    // Store code verifier for PKCE
+    (req.session as any).codeVerifier = codeVerifier;
     
-    // Build authorization URL with OIDC parameters
+    // Build authorization URL with OIDC and PKCE parameters
     const authUrl = new URL(`${config.OAUTH2_SERVER}/oauth/authorize`);
     authUrl.searchParams.set('response_type', 'code');
     authUrl.searchParams.set('client_id', config.CLIENT_ID);
@@ -36,6 +36,8 @@ router.get('/login', (req: Request, res: Response) => {
     authUrl.searchParams.set('scope', 'openid profile email');
     authUrl.searchParams.set('state', state);
     authUrl.searchParams.set('nonce', nonce);
+    authUrl.searchParams.set('code_challenge', codeChallenge);
+    authUrl.searchParams.set('code_challenge_method', 'S256');
     authUrl.searchParams.set('response_mode', 'query');
     
     res.json({
@@ -52,39 +54,47 @@ router.get('/login', (req: Request, res: Response) => {
 
 /**
  * GET /auth/callback
- * Handle OAuth2 callback and exchange code for tokens (Confidential Client)
+ * Handle OAuth2 callback and exchange code for tokens with PKCE (Confidential Client)
  */
 router.get('/callback', async (req: Request, res: Response) => {
   try {
     const { code, state, error } = req.query;
     
     if (error) {
-      return res.redirect(`${config.FRONTEND_URL}?error=${error}`);
+      return res.redirect(`${config.FRONTEND_URL}/callback?error=${error}`);
     }
     
     if (!code || !state) {
-      return res.redirect(`${config.FRONTEND_URL}?error=invalid_request`);
+      return res.redirect(`${config.FRONTEND_URL}/callback?error=invalid_request`);
     }
     
-    // Retrieve session
-    const session = sessions.get(state as string);
-    if (!session) {
-      return res.redirect(`${config.FRONTEND_URL}?error=invalid_state`);
+    // Validate state parameter
+    if (!req.session.state || !validateState(state as string, req.session.state)) {
+      return res.redirect(`${config.FRONTEND_URL}/callback?error=invalid_state`);
     }
     
-    // Clean up session
-    sessions.delete(state as string);
+    // Retrieve session data
+    const sessionNonce = req.session.nonce;
+    const sessionRedirectUri = req.session.redirect_uri;
+    const codeVerifier = (req.session as any).codeVerifier;
     
-    // Exchange authorization code for tokens (with client_secret)
+    if (!sessionRedirectUri || !codeVerifier) {
+      return res.redirect(`${config.FRONTEND_URL}/callback?error=session_expired`);
+    }
+    
+    // Exchange authorization code for tokens (with client_secret and PKCE)
+    const tokenParams: any = {
+      grant_type: 'authorization_code',
+      code: code as string,
+      redirect_uri: sessionRedirectUri,
+      client_id: config.CLIENT_ID,
+      client_secret: config.CLIENT_SECRET,
+      code_verifier: codeVerifier
+    };
+    
     const tokenResponse = await axios.post<TokenResponse>(
       `${config.OAUTH2_SERVER}/oauth/token`,
-      new URLSearchParams({
-        grant_type: 'authorization_code',
-        code: code as string,
-        redirect_uri: session.redirect_uri,
-        client_id: config.CLIENT_ID,
-        client_secret: config.CLIENT_SECRET
-      }),
+      new URLSearchParams(tokenParams),
       {
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded'
@@ -100,16 +110,22 @@ router.get('/callback', async (req: Request, res: Response) => {
         tokens.id_token,
         config.CLIENT_ID,
         config.OAUTH2_SERVER,
-        session.nonce
+        sessionNonce
       );
       
       if (!validation.valid) {
         console.error('ID Token validation failed:', validation.error);
-        return res.redirect(`${config.FRONTEND_URL}?error=invalid_id_token`);
+        return res.redirect(`${config.FRONTEND_URL}/callback?error=invalid_id_token`);
       }
       
       console.log('ID Token validated successfully:', validation.claims);
     }
+    
+    // Clear OAuth session data
+    req.session.state = undefined;
+    req.session.nonce = undefined;
+    req.session.redirect_uri = undefined;
+    (req.session as any).codeVerifier = undefined;
     
     // Store refresh token in HttpOnly cookie
     if (tokens.refresh_token) {
@@ -122,8 +138,8 @@ router.get('/callback', async (req: Request, res: Response) => {
       });
     }
     
-    // Redirect to frontend with access token
-    const redirectUrl = new URL(config.FRONTEND_URL);
+    // Redirect to frontend callback with access token
+    const redirectUrl = new URL(`${config.FRONTEND_URL}/callback`);
     redirectUrl.searchParams.set('access_token', tokens.access_token);
     redirectUrl.searchParams.set('expires_in', tokens.expires_in.toString());
     if (tokens.id_token) {
@@ -133,7 +149,7 @@ router.get('/callback', async (req: Request, res: Response) => {
     res.redirect(redirectUrl.toString());
   } catch (error: any) {
     console.error('Callback error:', error.response?.data || error.message);
-    res.redirect(`${config.FRONTEND_URL}?error=token_exchange_failed`);
+    res.redirect(`${config.FRONTEND_URL}/callback?error=token_exchange_failed`);
   }
 });
 
@@ -196,7 +212,7 @@ router.post('/refresh', requireRefreshToken, async (req: Request, res: Response)
  * POST /auth/logout
  * Clear refresh token cookie
  */
-router.post('/logout', (req: Request, res: Response) => {
+router.post('/logout', csrfProtection, (req: Request, res: Response) => {
   res.clearCookie('refresh_token', {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
@@ -352,17 +368,5 @@ router.get('/session', requireRefreshToken, (req: Request, res: Response) => {
     });
   }
 });
-
-// Clean up expired sessions periodically
-setInterval(() => {
-  const now = Date.now();
-  const maxAge = 10 * 60 * 1000; // 10 minutes
-  
-  for (const [state, session] of sessions.entries()) {
-    if (now - session.timestamp > maxAge) {
-      sessions.delete(state);
-    }
-  }
-}, 60 * 1000); // Run every minute
 
 export default router;

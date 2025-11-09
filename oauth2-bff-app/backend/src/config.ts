@@ -14,6 +14,7 @@ type Config = {
     CLIENT_ID: string;
     CLIENT_SECRET: string;
     REDIRECT_URI: string;
+    CORS_ORIGINS: string[];
 };
 
 const config: Config = {
@@ -23,6 +24,9 @@ const config: Config = {
     CLIENT_SECRET: process.env.CLIENT_SECRET!,
     FRONTEND_URL: process.env.FRONTEND_URL || 'http://localhost:5173',
     REDIRECT_URI: `${process.env.PORT ? `http://localhost:${process.env.PORT}` : 'http://localhost:3001'}/auth/callback`,
+    CORS_ORIGINS: process.env.CORS_ORIGINS 
+        ? process.env.CORS_ORIGINS.split(',').map(origin => origin.trim())
+        : [process.env.FRONTEND_URL || 'http://localhost:5173'],
 };
 
 

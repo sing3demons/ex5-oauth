@@ -1,39 +1,77 @@
 import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
+import session from 'express-session';
+import helmet from 'helmet';
 import dotenv from 'dotenv';
 import authRoutes from './routes/auth';
 import { connectDB } from './db/mongodb';
+import config from './config';
+import { csrfProtection } from './middleware/csrf';
 
 // Load environment variables
 dotenv.config();
 
 const app = express();
-const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
+
+// Security middleware
+app.use(helmet());
 
 // Middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
-// CORS configuration
-app.use(cors({
-  origin: FRONTEND_URL,
-  credentials: true, // Allow cookies
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+// Session middleware
+app.use(session({
+  secret: process.env.SESSION_SECRET || 'change-this-secret-in-production',
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+    maxAge: 10 * 60 * 1000, // 10 minutes for OAuth flow
+  },
 }));
+
+// CORS configuration - Properly configured with environment variables
+app.use(cors({
+  origin: (origin, callback) => {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) {
+      return callback(null, true);
+    }
+    
+    // Check if origin is in allowed list
+    if (config.CORS_ORIGINS.includes(origin)) {
+      callback(null, true);
+    } else {
+      console.warn(`CORS blocked origin: ${origin}`);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true, // Allow cookies and authorization headers
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token'],
+  exposedHeaders: ['X-CSRF-Token'],
+  maxAge: 86400, // Cache preflight requests for 24 hours
+}));
+
+// Endpoint to get CSRF token
+app.get('/csrf-token', csrfProtection, (req, res) => {
+  res.json({ csrfToken: req.csrfToken() });
+});
 
 // Routes
 app.use('/auth', authRoutes);
 
 // Todo routes
 import todoRoutes from './routes/todos';
-import config from './config';
 app.use('/api/todos', todoRoutes);
 
 // Health check
-app.get('/health', (req, res) => {
+app.get('/health', (_req, res) => {
   res.json({
     status: 'ok',
     timestamp: new Date().toISOString()
@@ -41,13 +79,13 @@ app.get('/health', (req, res) => {
 });
 
 // Error handling
-app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
-  console.error('Error:', err);
-  res.status(err.status || 500).json({
-    error: 'server_error',
-    message: err.message || 'Internal server error'
-  });
-});
+import { errorHandler, notFoundHandler } from './middleware/errorHandler';
+
+// 404 handler (must be after all routes)
+app.use(notFoundHandler);
+
+// Global error handler (must be last)
+app.use(errorHandler);
 
 // Start server
 async function startServer() {

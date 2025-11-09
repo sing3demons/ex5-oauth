@@ -1,3 +1,5 @@
+import 'express-session';
+
 export interface TokenResponse {
   access_token: string;
   token_type: string;
@@ -16,10 +18,13 @@ export interface UserInfo {
 }
 
 export interface AuthSession {
-  state: string;
-  redirect_uri: string;
-  nonce: string;
-  timestamp: number;
+  state?: string;
+  redirect_uri?: string;
+  nonce?: string;
+  timestamp?: number;
+  accessToken?: string;
+  refreshToken?: string;
+  userId?: string;
 }
 
 export interface IDTokenClaims {
@@ -35,10 +40,14 @@ export interface IDTokenClaims {
   [key: string]: any;
 }
 
-declare global {
-  namespace Express {
-    interface Request {
-      session?: AuthSession;
-    }
+declare module 'express-session' {
+  interface SessionData {
+    state?: string;
+    redirect_uri?: string;
+    nonce?: string;
+    timestamp?: number;
+    accessToken?: string;
+    refreshToken?: string;
+    userId?: string;
   }
 }

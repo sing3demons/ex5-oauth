@@ -1,72 +1,35 @@
-import express, { Request, Response } from 'express';
-import { v4 as uuidv4 } from 'uuid';
+import express, { Request, Response, NextFunction } from 'express';
 import { requireAuth } from '../middleware/auth';
-import { decodeJWT } from '../utils/oidc';
-import { Todo, CreateTodoRequest, UpdateTodoRequest } from '../types/todo';
-import { getDB } from '../db/mongodb';
+import { validateCreateTodo, validateUpdateTodo, validateMoveTodo } from '../middleware/validation';
+import { csrfProtection } from '../middleware/csrf';
+import { CreateTodoDto, UpdateTodoDto, MoveTodoDto } from '../types/todo';
+import { Todo } from '../models/Todo';
+import mongoose from 'mongoose';
 
 const router = express.Router();
-
-// Helper to get user ID from token
-function getUserIdFromToken(authHeader: string): string | null {
-  try {
-    const token = authHeader.replace('Bearer ', '');
-    const claims = decodeJWT(token);
-    return claims.sub || claims.user_id || null;
-  } catch {
-    return null;
-  }
-}
 
 /**
  * GET /api/todos
  * Get all todos for current user
  */
-router.get('/', requireAuth, async (req: Request, res: Response) => {
-  const userId = getUserIdFromToken(req.headers.authorization!);
+router.get('/', requireAuth, async (req: Request, res: Response, next: NextFunction) => {
+  const userId = req.user?.id;
   
   if (!userId) {
-    return res.status(401).json({ error: 'Invalid token' });
+    return res.status(401).json({ 
+      error: 'unauthorized',
+      message: 'Invalid token' 
+    });
   }
   
   try {
-    const db = getDB();
-    const userTodos = await db
-      .collection('todos')
-      .find({ userId })
-      .sort({ createdAt: -1 })
-      .toArray();
+    const todos = await Todo.find({ userId })
+      .sort({ status: 1, position: 1 })
+      .lean();
     
-    res.json(userTodos);
+    res.json(todos);
   } catch (error) {
-    console.error('Get todos error:', error);
-    res.status(500).json({ error: 'Failed to fetch todos' });
-  }
-});
-
-/**
- * GET /api/todos/:id
- * Get specific todo
- */
-router.get('/:id', requireAuth, async (req: Request, res: Response) => {
-  const userId = getUserIdFromToken(req.headers.authorization!);
-  
-  try {
-    const db = getDB();
-    const todo = await db.collection('todos').findOne({ id: req.params.id });
-    
-    if (!todo) {
-      return res.status(404).json({ error: 'Todo not found' });
-    }
-    
-    if (todo.userId !== userId) {
-      return res.status(403).json({ error: 'Forbidden' });
-    }
-    
-    res.json(todo);
-  } catch (error) {
-    console.error('Get todo error:', error);
-    res.status(500).json({ error: 'Failed to fetch todo' });
+    next(error);
   }
 });
 
@@ -74,91 +37,110 @@ router.get('/:id', requireAuth, async (req: Request, res: Response) => {
  * POST /api/todos
  * Create new todo
  */
-router.post('/', requireAuth, async (req: Request, res: Response) => {
-  const userId = getUserIdFromToken(req.headers.authorization!);
+router.post('/', csrfProtection, requireAuth, validateCreateTodo, async (req: Request, res: Response, next: NextFunction) => {
+  const userId = req.user?.id;
   
   if (!userId) {
-    return res.status(401).json({ error: 'Invalid token' });
+    return res.status(401).json({ 
+      error: 'unauthorized',
+      message: 'Invalid token' 
+    });
   }
-  
-  const body: CreateTodoRequest = req.body;
-  
-  if (!body.title || body.title.trim() === '') {
-    return res.status(400).json({ error: 'Title is required' });
-  }
-  
-  const todo: Todo = {
-    id: uuidv4(),
-    userId,
-    title: body.title.trim(),
-    description: body.description?.trim(),
-    status: 'todo',
-    priority: body.priority || 'medium',
-    createdAt: new Date(),
-    updatedAt: new Date()
-  };
   
   try {
-    const db = getDB();
-    await db.collection('todos').insertOne(todo);
-    res.status(201).json(todo);
+    const body: CreateTodoDto = req.body;
+    
+    // Validation is handled by Mongoose schema
+    const todo = new Todo({
+      userId,
+      title: body.title,
+      description: body.description,
+      status: body.status || 'todo',
+    });
+    
+    await todo.save();
+    
+    res.status(201).json(todo.toJSON());
   } catch (error) {
-    console.error('Create todo error:', error);
-    res.status(500).json({ error: 'Failed to create todo' });
+    if (error instanceof mongoose.Error.ValidationError) {
+      return res.status(400).json({
+        error: 'validation_error',
+        message: error.message,
+        details: error.errors,
+      });
+    }
+    next(error);
   }
 });
 
 /**
- * PUT /api/todos/:id
+ * PATCH /api/todos/:id
  * Update todo
  */
-router.put('/:id', requireAuth, async (req: Request, res: Response) => {
-  const userId = getUserIdFromToken(req.headers.authorization!);
+router.patch('/:id', csrfProtection, requireAuth, validateUpdateTodo, async (req: Request, res: Response, next: NextFunction) => {
+  const userId = req.user?.id;
+  const { id } = req.params;
+  
+  if (!userId) {
+    return res.status(401).json({ 
+      error: 'unauthorized',
+      message: 'Invalid token' 
+    });
+  }
+  
+  // Validate MongoDB ObjectId
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return res.status(400).json({
+      error: 'validation_error',
+      message: 'Invalid todo ID format',
+    });
+  }
   
   try {
-    const db = getDB();
-    const todo = await db.collection('todos').findOne({ id: req.params.id });
+    const todo = await Todo.findById(id);
     
     if (!todo) {
-      return res.status(404).json({ error: 'Todo not found' });
+      return res.status(404).json({ 
+        error: 'not_found',
+        message: 'Todo not found' 
+      });
     }
     
     if (todo.userId !== userId) {
-      return res.status(403).json({ error: 'Forbidden' });
+      return res.status(403).json({ 
+        error: 'forbidden',
+        message: 'You do not have permission to update this todo' 
+      });
     }
     
-    const body: UpdateTodoRequest = req.body;
-    const updates: any = { updatedAt: new Date() };
+    const body: UpdateTodoDto = req.body;
     
+    // Update only provided fields
     if (body.title !== undefined) {
-      if (body.title.trim() === '') {
-        return res.status(400).json({ error: 'Title cannot be empty' });
-      }
-      updates.title = body.title.trim();
+      todo.title = body.title;
     }
-    
     if (body.description !== undefined) {
-      updates.description = body.description.trim();
+      todo.description = body.description;
     }
-    
     if (body.status !== undefined) {
-      updates.status = body.status;
+      todo.status = body.status;
+    }
+    if (body.position !== undefined) {
+      todo.position = body.position;
     }
     
-    if (body.priority !== undefined) {
-      updates.priority = body.priority;
-    }
+    await todo.save();
     
-    await db.collection('todos').updateOne(
-      { id: req.params.id },
-      { $set: updates }
-    );
-    
-    const updated = await db.collection('todos').findOne({ id: req.params.id });
-    res.json(updated);
+    res.json(todo.toJSON());
   } catch (error) {
-    console.error('Update todo error:', error);
-    res.status(500).json({ error: 'Failed to update todo' });
+    if (error instanceof mongoose.Error.ValidationError) {
+      return res.status(400).json({
+        error: 'validation_error',
+        message: error.message,
+        details: error.errors,
+      });
+    }
+    next(error);
   }
 });
 
@@ -166,64 +148,108 @@ router.put('/:id', requireAuth, async (req: Request, res: Response) => {
  * DELETE /api/todos/:id
  * Delete todo
  */
-router.delete('/:id', requireAuth, async (req: Request, res: Response) => {
-  const userId = getUserIdFromToken(req.headers.authorization!);
+router.delete('/:id', csrfProtection, requireAuth, async (req: Request, res: Response, next: NextFunction) => {
+  const userId = req.user?.id;
+  const { id } = req.params;
+  
+  if (!userId) {
+    return res.status(401).json({ 
+      error: 'unauthorized',
+      message: 'Invalid token' 
+    });
+  }
+  
+  // Validate MongoDB ObjectId
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return res.status(400).json({
+      error: 'validation_error',
+      message: 'Invalid todo ID format',
+    });
+  }
   
   try {
-    const db = getDB();
-    const todo = await db.collection('todos').findOne({ id: req.params.id });
+    const todo = await Todo.findById(id);
     
     if (!todo) {
-      return res.status(404).json({ error: 'Todo not found' });
+      return res.status(404).json({ 
+        error: 'not_found',
+        message: 'Todo not found' 
+      });
     }
     
     if (todo.userId !== userId) {
-      return res.status(403).json({ error: 'Forbidden' });
+      return res.status(403).json({ 
+        error: 'forbidden',
+        message: 'You do not have permission to delete this todo' 
+      });
     }
     
-    await db.collection('todos').deleteOne({ id: req.params.id });
+    await todo.deleteOne();
+    
     res.status(204).send();
   } catch (error) {
-    console.error('Delete todo error:', error);
-    res.status(500).json({ error: 'Failed to delete todo' });
+    next(error);
   }
 });
 
 /**
- * PATCH /api/todos/:id/status
- * Update todo status (for drag & drop)
+ * PATCH /api/todos/:id/move
+ * Move todo to different status/position (for drag & drop)
  */
-router.patch('/:id/status', requireAuth, async (req: Request, res: Response) => {
-  const userId = getUserIdFromToken(req.headers.authorization!);
+router.patch('/:id/move', csrfProtection, requireAuth, validateMoveTodo, async (req: Request, res: Response, next: NextFunction) => {
+  const userId = req.user?.id;
+  const { id } = req.params;
+  
+  if (!userId) {
+    return res.status(401).json({ 
+      error: 'unauthorized',
+      message: 'Invalid token' 
+    });
+  }
+  
+  // Validate MongoDB ObjectId
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return res.status(400).json({
+      error: 'validation_error',
+      message: 'Invalid todo ID format',
+    });
+  }
   
   try {
-    const db = getDB();
-    const todo = await db.collection('todos').findOne({ id: req.params.id });
+    const todo = await Todo.findById(id);
     
     if (!todo) {
-      return res.status(404).json({ error: 'Todo not found' });
+      return res.status(404).json({ 
+        error: 'not_found',
+        message: 'Todo not found' 
+      });
     }
     
     if (todo.userId !== userId) {
-      return res.status(403).json({ error: 'Forbidden' });
+      return res.status(403).json({ 
+        error: 'forbidden',
+        message: 'You do not have permission to move this todo' 
+      });
     }
     
-    const { status } = req.body;
+    const body: MoveTodoDto = req.body;
     
-    if (!['todo', 'in_progress', 'done'].includes(status)) {
-      return res.status(400).json({ error: 'Invalid status' });
-    }
+    // Update todo status and position (validation done by middleware)
+    todo.status = body.status;
+    todo.position = body.position;
     
-    await db.collection('todos').updateOne(
-      { id: req.params.id },
-      { $set: { status, updatedAt: new Date() } }
-    );
+    await todo.save();
     
-    const updated = await db.collection('todos').findOne({ id: req.params.id });
-    res.json(updated);
+    res.json(todo.toJSON());
   } catch (error) {
-    console.error('Update status error:', error);
-    res.status(500).json({ error: 'Failed to update status' });
+    if (error instanceof mongoose.Error.ValidationError) {
+      return res.status(400).json({
+        error: 'validation_error',
+        message: error.message,
+        details: error.errors,
+      });
+    }
+    next(error);
   }
 });
 
