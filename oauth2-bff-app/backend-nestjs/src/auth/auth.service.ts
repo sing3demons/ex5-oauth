@@ -36,27 +36,40 @@ export class AuthService {
   }
 
   /**
-   * Initiate OAuth2/OIDC login flow
+   * Initiate OAuth2/OIDC login flow with encrypted state
    */
   async initiateLogin(): Promise<LoginResponseDto> {
     try {
       const state = this.cryptoService.generateState();
       const nonce = this.cryptoService.generateNonce();
+      const codeVerifier = this.cryptoService.generateCodeVerifier();
+      const codeChallenge = this.cryptoService.generateCodeChallenge(codeVerifier);
 
-      // Store session with state and nonce
-      this.sessionService.createSession(state, {
-        redirect_uri: this.redirectUri,
+      // Encrypt OAuth state data into the state parameter
+      const encryptedState = this.cryptoService.encryptOAuthState({
+        state,
         nonce,
+        codeVerifier,
+        redirectUri: this.redirectUri,
       });
 
-      // Build authorization URL
+      console.log('🔐 Generated encrypted OAuth state:', {
+        originalState: state,
+        encryptedState: encryptedState.substring(0, 20) + '...',
+        nonce,
+        codeVerifier: codeVerifier.substring(0, 10) + '...',
+      });
+
+      // Build authorization URL with OIDC and PKCE parameters
       const authUrl = new URL(`${this.oauth2ServerUrl}/oauth/authorize`);
       authUrl.searchParams.set('response_type', 'code');
       authUrl.searchParams.set('client_id', this.clientId);
       authUrl.searchParams.set('redirect_uri', this.redirectUri);
       authUrl.searchParams.set('scope', 'openid profile email');
-      authUrl.searchParams.set('state', state);
+      authUrl.searchParams.set('state', encryptedState);
       authUrl.searchParams.set('nonce', nonce);
+      authUrl.searchParams.set('code_challenge', codeChallenge);
+      authUrl.searchParams.set('code_challenge_method', 'S256');
       authUrl.searchParams.set('response_mode', 'query');
 
       return {
@@ -71,35 +84,44 @@ export class AuthService {
   /**
    * Handle OAuth2 callback and exchange code for tokens
    */
-  async handleCallback(code: string, state: string, error: string, res: Response): Promise<void> {
+  async handleCallback(code: string, state: string, error: string, res: Response): Promise<any> {
     try {
       if (error) {
-        return res.redirect(`${this.frontendUrl}?error=${error}`);
+        return res.json({ error });
       }
 
       if (!code || !state) {
-        return res.redirect(`${this.frontendUrl}?error=invalid_request`);
+        return res.json({ error: 'invalid_request' });
       }
 
-      // Retrieve session
-      const session = this.sessionService.getSession(state);
-      if (!session) {
-        return res.redirect(`${this.frontendUrl}?error=invalid_state`);
+      // Decrypt and validate OAuth state from the state parameter
+      const oauthState = this.cryptoService.decryptOAuthState(state);
+
+      if (!oauthState) {
+        console.error('❌ Failed to decrypt or validate OAuth state');
+        return res.json({ error: 'invalid_state' });
       }
 
-      // Delete session after retrieval
-      this.sessionService.deleteSession(state);
+      console.log('🔓 Decrypted OAuth state:', {
+        originalState: oauthState.state,
+        nonce: oauthState.nonce,
+        codeVerifier: oauthState.codeVerifier.substring(0, 10) + '...',
+        age: Date.now() - oauthState.timestamp + 'ms',
+      });
 
-      // Exchange authorization code for tokens
+      const { nonce: storedNonce, codeVerifier, redirectUri: storedRedirectUri } = oauthState;
+
+      // Exchange authorization code for tokens (with client_secret and PKCE)
       const tokenResponse = await firstValueFrom(
         this.httpService.post(
           `${this.oauth2ServerUrl}/oauth/token`,
           new URLSearchParams({
             grant_type: 'authorization_code',
             code,
-            redirect_uri: session.redirect_uri,
+            redirect_uri: storedRedirectUri,
             client_id: this.clientId,
             client_secret: this.clientSecret,
+            code_verifier: codeVerifier,
           }),
           {
             headers: {
@@ -117,15 +139,15 @@ export class AuthService {
           tokens.id_token,
           this.clientId,
           this.oauth2ServerUrl,
-          session.nonce,
+          storedNonce,
         );
 
         if (!validation.valid) {
           console.error('ID Token validation failed:', validation.error);
-          return res.redirect(`${this.frontendUrl}?error=invalid_id_token`);
+          return res.json({ error: 'invalid_id_token', message: validation.error });
         }
 
-        console.log('ID Token validated successfully:', validation.claims);
+        console.log('✅ ID Token validated successfully:', validation.claims);
       }
 
       // Store refresh token in HttpOnly cookie
@@ -139,18 +161,30 @@ export class AuthService {
         });
       }
 
-      // Redirect to frontend with access token
-      const redirectUrl = new URL(this.frontendUrl);
-      redirectUrl.searchParams.set('access_token', tokens.access_token);
-      redirectUrl.searchParams.set('expires_in', tokens.expires_in.toString());
+      // Build frontend callback URL with tokens
+      const callbackUrl = new URL(`${this.frontendUrl}/callback`);
+      callbackUrl.searchParams.set('access_token', tokens.access_token);
+      callbackUrl.searchParams.set('expires_in', tokens.expires_in.toString());
       if (tokens.id_token) {
-        redirectUrl.searchParams.set('id_token', tokens.id_token);
+        callbackUrl.searchParams.set('id_token', tokens.id_token);
       }
 
-      res.redirect(redirectUrl.toString());
+      // Always return JSON with redirect_uri
+      // OAuth2 server login page will handle the redirect
+      return res.json({
+        success: true,
+        redirect_uri: callbackUrl.toString(),
+        access_token: tokens.access_token,
+        expires_in: tokens.expires_in,
+        id_token: tokens.id_token,
+        token_type: tokens.token_type || 'Bearer',
+      });
     } catch (error: any) {
       console.error('Callback error:', error.response?.data || error.message);
-      res.redirect(`${this.frontendUrl}?error=token_exchange_failed`);
+      return res.json({
+        error: 'token_exchange_failed',
+        message: error.response?.data?.error_description || error.message,
+      });
     }
   }
 

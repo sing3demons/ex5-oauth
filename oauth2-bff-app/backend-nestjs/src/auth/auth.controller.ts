@@ -31,7 +31,7 @@ export class AuthController {
     @Query('state') state: string,
     @Query('error') error: string,
     @Res() res: Response,
-  ): Promise<void> {
+  ): Promise<any> {
     return this.authService.handleCallback(code, state, error, res);
   }
 
