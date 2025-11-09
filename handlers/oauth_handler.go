@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"oauth2-server/config"
+	"oauth2-server/middleware"
 	"oauth2-server/models"
 	"oauth2-server/repository"
 	"oauth2-server/utils"
@@ -18,6 +19,7 @@ type OAuthHandler struct {
 	clientRepo   *repository.ClientRepository
 	authCodeRepo *repository.AuthCodeRepository
 	sessionRepo  *repository.SessionRepository
+	consentRepo  *repository.UserConsentRepository
 	config       *config.Config
 }
 
@@ -26,6 +28,7 @@ func NewOAuthHandler(
 	clientRepo *repository.ClientRepository,
 	authCodeRepo *repository.AuthCodeRepository,
 	sessionRepo *repository.SessionRepository,
+	consentRepo *repository.UserConsentRepository,
 	cfg *config.Config,
 ) *OAuthHandler {
 	return &OAuthHandler{
@@ -33,6 +36,7 @@ func NewOAuthHandler(
 		clientRepo:   clientRepo,
 		authCodeRepo: authCodeRepo,
 		sessionRepo:  sessionRepo,
+		consentRepo:  consentRepo,
 		config:       cfg,
 	}
 }
@@ -46,6 +50,7 @@ func (h *OAuthHandler) Authorize(w http.ResponseWriter, r *http.Request) {
 	nonce := r.URL.Query().Get("nonce")
 	codeChallenge := r.URL.Query().Get("code_challenge")
 	challengeMethod := r.URL.Query().Get("code_challenge_method")
+	prompt := r.URL.Query().Get("prompt")
 
 	// Validate nonce length (max 512 characters as per OIDC spec)
 	if len(nonce) > 512 {
@@ -122,6 +127,124 @@ func (h *OAuthHandler) Authorize(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Extract SSO session from request context
+	ssoSession, _ := r.Context().Value(middleware.SSOSessionContextKey).(*models.SSOSession)
+
+	// Handle prompt=login: force re-authentication
+	if prompt == "login" {
+		ssoSession = nil // Ignore SSO session to force login
+	}
+
+	// Handle prompt=select_account: display account selection (placeholder for future)
+	// For now, treat it like prompt=login and force re-authentication
+	if prompt == "select_account" {
+		ssoSession = nil // Force account selection by requiring login
+	}
+
+	// Handle prompt=none: fail immediately if not authenticated or no consent
+	if prompt == "none" {
+		// Check if user is authenticated
+		if ssoSession == nil || !ssoSession.Authenticated {
+			// Build error redirect URL
+			errorURL := redirectURI + "?error=login_required&error_description=User+authentication+required"
+			if state != "" {
+				errorURL += "&state=" + state
+			}
+			http.Redirect(w, r, errorURL, http.StatusFound)
+			return
+		}
+
+		// User is authenticated, check for consent
+		requestedScopes := strings.Split(scope, " ")
+		hasConsent, err := h.consentRepo.HasConsent(ctx, ssoSession.UserID, clientID, requestedScopes)
+		if err != nil || !hasConsent {
+			// Build error redirect URL
+			errorURL := redirectURI + "?error=consent_required&error_description=User+consent+required"
+			if state != "" {
+				errorURL += "&state=" + state
+			}
+			http.Redirect(w, r, errorURL, http.StatusFound)
+			return
+		}
+
+		// Both authentication and consent exist, proceed with auto-approval
+		// Fall through to the auto-approval logic below
+	}
+
+	// Check if SSO session exists and is authenticated
+	if ssoSession != nil && ssoSession.Authenticated {
+		// Parse scopes for consent check
+		requestedScopes := strings.Split(scope, " ")
+		
+		// Check for existing user consent
+		hasConsent, err := h.consentRepo.HasConsent(ctx, ssoSession.UserID, clientID, requestedScopes)
+		if err != nil {
+			// Log error but continue to consent screen
+			hasConsent = false
+		}
+
+		// Handle prompt=consent: force consent screen
+		if prompt == "consent" {
+			hasConsent = false
+		}
+
+		// Auto-approve if consent exists
+		if hasConsent {
+			// Generate authorization code immediately
+			code, err := utils.GenerateRandomString(16)
+			if err != nil {
+				respondError(w, http.StatusInternalServerError, "server_error", "Failed to generate authorization code")
+				return
+			}
+
+			authCode := &models.AuthorizationCode{
+				Code:            code,
+				ClientID:        clientID,
+				UserID:          ssoSession.UserID,
+				RedirectURI:     redirectURI,
+				Scope:           scope,
+				Nonce:           nonce,
+				CodeChallenge:   codeChallenge,
+				ChallengeMethod: challengeMethod,
+				ExpiresAt:       time.Now().Add(10 * time.Minute),
+			}
+
+			if err := h.authCodeRepo.Create(ctx, authCode); err != nil {
+				respondError(w, http.StatusInternalServerError, "server_error", "Failed to create authorization code")
+				return
+			}
+
+			// Redirect with authorization code
+			redirectURL := redirectURI + "?code=" + code
+			if state != "" {
+				redirectURL += "&state=" + state
+			}
+			http.Redirect(w, r, redirectURL, http.StatusFound)
+			return
+		}
+
+		// No consent - redirect to consent screen
+		consentURL := "/oauth/consent?client_id=" + clientID +
+			"&scope=" + scope +
+			"&redirect_uri=" + redirectURI +
+			"&response_type=" + responseType
+		if state != "" {
+			consentURL += "&state=" + state
+		}
+		if nonce != "" {
+			consentURL += "&nonce=" + nonce
+		}
+		if codeChallenge != "" {
+			consentURL += "&code_challenge=" + codeChallenge
+			if challengeMethod != "" {
+				consentURL += "&code_challenge_method=" + challengeMethod
+			}
+		}
+		http.Redirect(w, r, consentURL, http.StatusFound)
+		return
+	}
+
+	// No SSO session or no consent - create OAuth session and redirect to login
 	sessionID, err := utils.GenerateRandomString(32)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "server_error", "Failed to generate session")

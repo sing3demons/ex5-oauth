@@ -87,6 +87,7 @@ func TestScopeValidationFlow(t *testing.T) {
 	clientRepo := repository.NewClientRepository(db)
 	authCodeRepo := repository.NewAuthCodeRepository(db)
 	sessionRepo := repository.NewSessionRepository(db)
+	consentRepo := repository.NewUserConsentRepository(db)
 
 	// Load test keys
 	privateKey, publicKey, err := utils.LoadTestKeys()
@@ -101,7 +102,7 @@ func TestScopeValidationFlow(t *testing.T) {
 		RefreshTokenExpiry: 86400,
 	}
 
-	handler := NewOAuthHandler(userRepo, clientRepo, authCodeRepo, sessionRepo, cfg)
+	handler := NewOAuthHandler(userRepo, clientRepo, authCodeRepo, sessionRepo, consentRepo, cfg)
 
 	// Create test client with allowed scopes
 	testClient := &models.Client{
@@ -269,6 +270,7 @@ func TestClaimFiltering(t *testing.T) {
 	clientRepo := repository.NewClientRepository(db)
 	authCodeRepo := repository.NewAuthCodeRepository(db)
 	sessionRepo := repository.NewSessionRepository(db)
+	consentRepo := repository.NewUserConsentRepository(db)
 
 	// Load test keys
 	privateKey, publicKey, err := utils.LoadTestKeys()
@@ -283,7 +285,7 @@ func TestClaimFiltering(t *testing.T) {
 		RefreshTokenExpiry: 86400,
 	}
 
-	handler := NewOAuthHandler(userRepo, clientRepo, authCodeRepo, sessionRepo, cfg)
+	handler := NewOAuthHandler(userRepo, clientRepo, authCodeRepo, sessionRepo, consentRepo, cfg)
 
 	// Create test user
 	testUser := &models.User{
@@ -434,6 +436,7 @@ func TestUserInfoClaimFiltering(t *testing.T) {
 	clientRepo := repository.NewClientRepository(db)
 	authCodeRepo := repository.NewAuthCodeRepository(db)
 	sessionRepo := repository.NewSessionRepository(db)
+	consentRepo := repository.NewUserConsentRepository(db)
 
 	// Load test keys
 	privateKey, publicKey, err := utils.LoadTestKeys()
@@ -448,7 +451,7 @@ func TestUserInfoClaimFiltering(t *testing.T) {
 		RefreshTokenExpiry: 86400,
 	}
 
-	handler := NewOAuthHandler(userRepo, clientRepo, authCodeRepo, sessionRepo, cfg)
+	handler := NewOAuthHandler(userRepo, clientRepo, authCodeRepo, sessionRepo, consentRepo, cfg)
 
 	// Create test user
 	testUser := &models.User{
@@ -560,6 +563,7 @@ func TestScopeDowngrade(t *testing.T) {
 	clientRepo := repository.NewClientRepository(db)
 	authCodeRepo := repository.NewAuthCodeRepository(db)
 	sessionRepo := repository.NewSessionRepository(db)
+	consentRepo := repository.NewUserConsentRepository(db)
 
 	// Load test keys
 	privateKey, publicKey, err := utils.LoadTestKeys()
@@ -574,7 +578,7 @@ func TestScopeDowngrade(t *testing.T) {
 		RefreshTokenExpiry: 86400,
 	}
 
-	handler := NewOAuthHandler(userRepo, clientRepo, authCodeRepo, sessionRepo, cfg)
+	handler := NewOAuthHandler(userRepo, clientRepo, authCodeRepo, sessionRepo, consentRepo, cfg)
 
 	// Create test user with explicit string ID
 	userID, _ := utils.GenerateRandomString(32)
@@ -791,6 +795,7 @@ func TestScopeDowngradeWithMultipleRefreshes(t *testing.T) {
 	clientRepo := repository.NewClientRepository(db)
 	authCodeRepo := repository.NewAuthCodeRepository(db)
 	sessionRepo := repository.NewSessionRepository(db)
+	consentRepo := repository.NewUserConsentRepository(db)
 
 	// Load test keys
 	privateKey, publicKey, err := utils.LoadTestKeys()
@@ -805,7 +810,7 @@ func TestScopeDowngradeWithMultipleRefreshes(t *testing.T) {
 		RefreshTokenExpiry: 86400,
 	}
 
-	handler := NewOAuthHandler(userRepo, clientRepo, authCodeRepo, sessionRepo, cfg)
+	handler := NewOAuthHandler(userRepo, clientRepo, authCodeRepo, sessionRepo, consentRepo, cfg)
 
 	// Create test user with explicit string ID
 	userID, _ := utils.GenerateRandomString(32)

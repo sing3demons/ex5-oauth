@@ -8,6 +8,7 @@ import (
 	"oauth2-server/config"
 	"oauth2-server/database"
 	"oauth2-server/handlers"
+	"oauth2-server/middleware"
 	"oauth2-server/repository"
 	"oauth2-server/utils"
 	"os"
@@ -70,14 +71,18 @@ func main() {
 	clientRepo := repository.NewClientRepository(db.DB)
 	authCodeRepo := repository.NewAuthCodeRepository(db.DB)
 	sessionRepo := repository.NewSessionRepository(db.DB)
+	ssoSessionRepo := repository.NewSSOSessionRepository(db.DB)
+	consentRepo := repository.NewUserConsentRepository(db.DB)
 
-	authHandler := handlers.NewAuthHandler(userRepo, clientRepo, authCodeRepo, sessionRepo, cfg)
-	oauthHandler := handlers.NewOAuthHandler(userRepo, clientRepo, authCodeRepo, sessionRepo, cfg)
+	authHandler := handlers.NewAuthHandler(userRepo, clientRepo, authCodeRepo, sessionRepo, ssoSessionRepo, cfg)
+	oauthHandler := handlers.NewOAuthHandler(userRepo, clientRepo, authCodeRepo, sessionRepo, consentRepo, cfg)
 	clientHandler := handlers.NewClientHandler(clientRepo, utils.GlobalScopeRegistry, utils.GlobalScopeValidator)
 	discoveryHandler := handlers.NewDiscoveryHandler("http://localhost:"+cfg.ServerPort, utils.GlobalScopeRegistry)
 	jwksHandler := handlers.NewJWKSHandler(publicKey)
 	tokenExchangeHandler := handlers.NewTokenExchangeHandler(userRepo, clientRepo, cfg)
 	tokenValidationHandler := handlers.NewTokenValidationHandler(cfg)
+	consentHandler := handlers.NewConsentHandler(clientRepo, consentRepo, authCodeRepo, sessionRepo, cfg)
+	sessionHandler := handlers.NewSessionHandler(ssoSessionRepo, consentRepo, clientRepo, cfg)
 
 	r := mux.NewRouter()
 
@@ -91,8 +96,12 @@ func main() {
 	r.HandleFunc("/auth/register", authHandler.Register).Methods("POST", "OPTIONS")
 	r.HandleFunc("/auth/login", authHandler.ShowLogin).Methods("GET")
 	r.HandleFunc("/auth/login", authHandler.Login).Methods("POST", "OPTIONS")
+	r.HandleFunc("/auth/logout", authHandler.Logout).Methods("POST", "OPTIONS")
 
-	r.HandleFunc("/oauth/authorize", oauthHandler.Authorize).Methods("GET", "OPTIONS")
+	// Apply SSO middleware to authorization and consent endpoints
+	r.Handle("/oauth/authorize", middleware.SSOMiddleware(ssoSessionRepo)(http.HandlerFunc(oauthHandler.Authorize))).Methods("GET", "OPTIONS")
+	r.Handle("/oauth/consent", middleware.SSOMiddleware(ssoSessionRepo)(http.HandlerFunc(consentHandler.ShowConsent))).Methods("GET", "OPTIONS")
+	r.Handle("/oauth/consent", middleware.SSOMiddleware(ssoSessionRepo)(http.HandlerFunc(consentHandler.HandleConsent))).Methods("POST", "OPTIONS")
 	r.HandleFunc("/oauth/token", oauthHandler.Token).Methods("POST", "OPTIONS")
 	r.HandleFunc("/oauth/userinfo", oauthHandler.UserInfo).Methods("GET", "OPTIONS")
 
@@ -100,6 +109,14 @@ func main() {
 	r.HandleFunc("/token/validate", tokenValidationHandler.ValidateToken).Methods("GET", "POST", "OPTIONS")
 
 	r.HandleFunc("/clients/register", clientHandler.RegisterClient).Methods("POST", "OPTIONS")
+
+	// Session management endpoints
+	r.HandleFunc("/account/sessions", sessionHandler.ListSessions).Methods("GET", "OPTIONS")
+	r.HandleFunc("/account/sessions/{session_id}", sessionHandler.RevokeSession).Methods("DELETE", "OPTIONS")
+
+	// Authorization management endpoints
+	r.HandleFunc("/account/authorizations", sessionHandler.ListAuthorizations).Methods("GET", "OPTIONS")
+	r.HandleFunc("/account/authorizations/{client_id}", sessionHandler.RevokeAuthorization).Methods("DELETE", "OPTIONS")
 
 	r.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -206,6 +223,47 @@ func createIndexes(db *mongo.Database) error {
 	_, err = sessionsCollection.Indexes().CreateOne(ctx, mongo.IndexModel{
 		Keys:    bson.D{{Key: "expires_at", Value: 1}},
 		Options: options.Index().SetExpireAfterSeconds(0),
+	})
+	if err != nil {
+		return err
+	}
+
+	// SSO Sessions indexes
+	ssoSessionsCollection := db.Collection("sso_sessions")
+	_, err = ssoSessionsCollection.Indexes().CreateOne(ctx, mongo.IndexModel{
+		Keys:    bson.D{{Key: "session_id", Value: 1}},
+		Options: options.Index().SetUnique(true),
+	})
+	if err != nil {
+		return err
+	}
+
+	_, err = ssoSessionsCollection.Indexes().CreateOne(ctx, mongo.IndexModel{
+		Keys: bson.D{{Key: "user_id", Value: 1}},
+	})
+	if err != nil {
+		return err
+	}
+
+	_, err = ssoSessionsCollection.Indexes().CreateOne(ctx, mongo.IndexModel{
+		Keys: bson.D{{Key: "expires_at", Value: 1}},
+	})
+	if err != nil {
+		return err
+	}
+
+	// User Consents indexes
+	userConsentsCollection := db.Collection("user_consents")
+	_, err = userConsentsCollection.Indexes().CreateOne(ctx, mongo.IndexModel{
+		Keys:    bson.D{{Key: "user_id", Value: 1}, {Key: "client_id", Value: 1}},
+		Options: options.Index().SetUnique(true),
+	})
+	if err != nil {
+		return err
+	}
+
+	_, err = userConsentsCollection.Indexes().CreateOne(ctx, mongo.IndexModel{
+		Keys: bson.D{{Key: "user_id", Value: 1}},
 	})
 	if err != nil {
 		return err

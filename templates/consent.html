@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Authorization Request - OAuth2 Server</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .consent-container {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 480px;
+            width: 100%;
+            padding: 40px;
+        }
+        .logo {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .logo h1 {
+            color: #667eea;
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+        .logo p {
+            color: #718096;
+            font-size: 14px;
+        }
+        .client-info {
+            background: #f7fafc;
+            border-left: 4px solid #667eea;
+            padding: 20px;
+            margin-bottom: 25px;
+            border-radius: 4px;
+        }
+        .client-info h2 {
+            color: #2d3748;
+            font-size: 18px;
+            margin-bottom: 10px;
+        }
+        .client-info p {
+            color: #4a5568;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        .client-info .client-name {
+            color: #667eea;
+            font-weight: 600;
+        }
+        .permissions-section {
+            margin-bottom: 30px;
+        }
+        .permissions-section h3 {
+            color: #2d3748;
+            font-size: 16px;
+            margin-bottom: 15px;
+            font-weight: 600;
+        }
+        .scope-list {
+            list-style: none;
+            background: #f7fafc;
+            border-radius: 8px;
+            padding: 15px;
+        }
+        .scope-list li {
+            color: #4a5568;
+            font-size: 14px;
+            padding: 12px 0;
+            padding-left: 30px;
+            position: relative;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        .scope-list li:last-child {
+            border-bottom: none;
+        }
+        .scope-list li:before {
+            content: "✓";
+            position: absolute;
+            left: 0;
+            color: #48bb78;
+            font-weight: bold;
+            font-size: 18px;
+        }
+        .scope-list li .scope-name {
+            font-weight: 600;
+            color: #2d3748;
+            display: block;
+            margin-bottom: 4px;
+        }
+        .scope-list li .scope-description {
+            color: #718096;
+            font-size: 13px;
+        }
+        .button-group {
+            display: flex;
+            gap: 12px;
+            margin-top: 25px;
+        }
+        .btn {
+            flex: 1;
+            padding: 14px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .btn:hover {
+            transform: translateY(-2px);
+        }
+        .btn:active {
+            transform: translateY(0);
+        }
+        .btn-allow {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        .btn-allow:hover {
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.4);
+        }
+        .btn-deny {
+            background: #e2e8f0;
+            color: #4a5568;
+        }
+        .btn-deny:hover {
+            background: #cbd5e0;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+        .security-notice {
+            margin-top: 25px;
+            padding: 15px;
+            background: #fef5e7;
+            border-left: 4px solid #f59e0b;
+            border-radius: 4px;
+        }
+        .security-notice p {
+            color: #92400e;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+        .security-notice strong {
+            color: #78350f;
+        }
+        @media (max-width: 480px) {
+            .consent-container {
+                padding: 30px 20px;
+            }
+            .button-group {
+                flex-direction: column-reverse;
+            }
+            .btn {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="consent-container">
+        <div class="logo">
+            <h1>🔐 OAuth2 Server</h1>
+            <p>Authorization Request</p>
+        </div>
+
+        <div class="client-info">
+            <h2>Application Access Request</h2>
+            <p>
+                <span class="client-name">{{.ClientName}}</span> is requesting access to your account.
+            </p>
+        </div>
+
+        <div class="permissions-section">
+            <h3>This application will be able to:</h3>
+            <ul class="scope-list">
+                {{range $index, $scope := .Scopes}}
+                <li>
+                    <span class="scope-name">{{$scope}}</span>
+                    {{if index $.ScopeDescriptions $index}}
+                    <span class="scope-description">{{index $.ScopeDescriptions $index}}</span>
+                    {{end}}
+                </li>
+                {{end}}
+            </ul>
+        </div>
+
+        <form id="consentForm" method="POST" action="/oauth/consent">
+            <input type="hidden" name="client_id" value="{{.ClientID}}">
+            <input type="hidden" name="scope" value="{{.ScopeString}}">
+            <input type="hidden" name="state" value="{{.State}}">
+            <input type="hidden" name="redirect_uri" value="{{.RedirectURI}}">
+            {{if .ResponseType}}
+            <input type="hidden" name="response_type" value="{{.ResponseType}}">
+            {{end}}
+            {{if .CodeChallenge}}
+            <input type="hidden" name="code_challenge" value="{{.CodeChallenge}}">
+            {{end}}
+            {{if .CodeChallengeMethod}}
+            <input type="hidden" name="code_challenge_method" value="{{.CodeChallengeMethod}}">
+            {{end}}
+            {{if .Nonce}}
+            <input type="hidden" name="nonce" value="{{.Nonce}}">
+            {{end}}
+            
+            <div class="button-group">
+                <button type="submit" name="action" value="deny" class="btn btn-deny">
+                    Deny
+                </button>
+                <button type="submit" name="action" value="allow" class="btn btn-allow">
+                    Allow
+                </button>
+            </div>
+        </form>
+
+        <div class="security-notice">
+            <p>
+                <strong>Security Notice:</strong> Only authorize applications you trust. 
+                You can revoke access at any time from your account settings.
+            </p>
+        </div>
+    </div>
+</body>
+</html>

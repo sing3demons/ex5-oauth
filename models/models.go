@@ -55,3 +55,24 @@ type ErrorResponse struct {
 	Error            string `json:"error"`
 	ErrorDescription string `json:"error_description,omitempty"`
 }
+
+type SSOSession struct {
+	ID            string    `bson:"_id,omitempty" json:"id"`
+	SessionID     string    `bson:"session_id" json:"session_id"`
+	UserID        string    `bson:"user_id" json:"user_id"`
+	Authenticated bool      `bson:"authenticated" json:"authenticated"`
+	CreatedAt     time.Time `bson:"created_at" json:"created_at"`
+	ExpiresAt     time.Time `bson:"expires_at" json:"expires_at"`
+	LastActivity  time.Time `bson:"last_activity" json:"last_activity"`
+	IPAddress     string    `bson:"ip_address,omitempty" json:"ip_address,omitempty"`
+	UserAgent     string    `bson:"user_agent,omitempty" json:"user_agent,omitempty"`
+}
+
+type UserConsent struct {
+	ID        string    `bson:"_id,omitempty" json:"id"`
+	UserID    string    `bson:"user_id" json:"user_id"`
+	ClientID  string    `bson:"client_id" json:"client_id"`
+	Scopes    []string  `bson:"scopes" json:"scopes"`
+	GrantedAt time.Time `bson:"granted_at" json:"granted_at"`
+	ExpiresAt time.Time `bson:"expires_at,omitempty" json:"expires_at,omitempty"`
+}

@@ -18,6 +18,11 @@ OAuth2 และ OpenID Connect (OIDC) Authorization Server แบบ stateless 
 - ✅ JWKS Endpoint
 - ✅ UserInfo Endpoint
 - ✅ Authorization Code with Session ID Tracking
+- ✅ **Single Sign-On (SSO)** - Login once, access multiple applications
+- ✅ **User Consent Management** - Remember user permissions across applications
+- ✅ **Session Management API** - View and revoke active sessions
+- ✅ **Authorization Management API** - View and revoke application permissions
+- ✅ **OIDC Prompt Parameter Support** - Control authentication behavior (login, consent, none)
 
 ## โครงสร้างโปรเจกต์
 
@@ -58,11 +63,21 @@ cp .env.example .env
 3. แก้ไขค่าใน `.env` ตามต้องการ:
 
 ```env
+# Database
 MONGODB_URI=mongodb://localhost:27017
 DATABASE_NAME=oauth2_db
+
+# Server
 SERVER_PORT=8080
+
+# Token Configuration
 ACCESS_TOKEN_EXPIRY=3600
 REFRESH_TOKEN_EXPIRY=604800
+
+# SSO Configuration (Optional)
+SSO_SESSION_EXPIRY_DAYS=7          # SSO session lifetime (default: 7 days)
+SSO_CONSENT_EXPIRY_DAYS=365        # Consent lifetime (default: 1 year)
+SSO_COOKIE_SECURE=true             # Require HTTPS (set to false for local dev)
 ```
 
 **หมายเหตุ:** RSA key pair จะถูกสร้างอัตโนมัติเมื่อรันครั้งแรก และจะถูกเก็บไว้ใน `keys/` directory
@@ -92,6 +107,28 @@ The server includes comprehensive structured logging with:
 - File and console output support
 
 See [logger/README.md](logger/README.md) for detailed documentation.
+
+## Single Sign-On (SSO)
+
+The OAuth2 Server now supports Single Sign-On functionality, allowing users to authenticate once and seamlessly access multiple client applications without re-entering credentials.
+
+### Key Features
+
+- **Persistent Sessions**: 7-day SSO sessions with secure HTTP-only cookies
+- **Automatic Authorization**: Skip login and consent screens for returning users
+- **Consent Management**: Remember user permissions for each application
+- **Session Security**: IP address and user agent fingerprinting
+- **Session Management**: View and revoke active sessions via API
+- **Authorization Management**: View and revoke application permissions via API
+- **OIDC Compliance**: Full support for `prompt` parameter (login, consent, none, select_account)
+
+### Quick Start
+
+1. **First Login**: User logs in to App A, grants consent → SSO session created
+2. **Second App**: User accesses App B → Automatically authorized (no login/consent needed)
+3. **Logout**: User logs out → SSO session cleared across all applications
+
+For detailed SSO usage examples and flows, see [docs/SSO_USAGE.md](docs/SSO_USAGE.md).
 
 ## API Endpoints
 
@@ -130,6 +167,13 @@ Content-Type: application/json
   "password": "password123",
   "session_id": "optional_session_id"
 }
+```
+
+#### Logout (SSO)
+```bash
+POST /auth/logout
+# Optional: post_logout_redirect_uri parameter
+POST /auth/logout?post_logout_redirect_uri=https://example.com/logged-out
 ```
 
 ### Client Management
@@ -193,6 +237,34 @@ GET /.well-known/openid-configuration
 #### JWKS Endpoint
 ```bash
 GET /.well-known/jwks.json
+```
+
+### SSO Session Management
+
+#### List Active Sessions
+```bash
+GET /account/sessions
+Authorization: Bearer ACCESS_TOKEN
+```
+
+#### Revoke Specific Session
+```bash
+DELETE /account/sessions/{session_id}
+Authorization: Bearer ACCESS_TOKEN
+```
+
+### SSO Authorization Management
+
+#### List Authorized Applications
+```bash
+GET /account/authorizations
+Authorization: Bearer ACCESS_TOKEN
+```
+
+#### Revoke Application Authorization
+```bash
+DELETE /account/authorizations/{client_id}
+Authorization: Bearer ACCESS_TOKEN
 ```
 
 ## ตัวอย่างการใช้งาน
