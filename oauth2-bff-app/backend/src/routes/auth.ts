@@ -234,7 +234,7 @@ router.post('/refresh', requireRefreshToken, async (req: Request, res: Response)
  * POST /auth/logout
  * Clear refresh token cookie
  */
-router.post('/logout', csrfProtection, (req: Request, res: Response) => {
+router.post('/logout', (req: Request, res: Response) => {
   res.clearCookie('refresh_token', {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
