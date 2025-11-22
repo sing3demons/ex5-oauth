@@ -227,19 +227,8 @@ func (l *Logger) ErrorSummary(actionInfo ActionInfo, summary map[string]interfac
 }
 
 // Simple logging for backward compatibility
-func (l *Logger) Info(action, message string, opts ...LogOption) {
-	log := DetailLog{
-		Level:   LevelInfo,
-		Type:    TypeDetail,
-		Action:  action,
-		Message: message,
-	}
-
-	for _, opt := range opts {
-		opt(&log)
-	}
-
-	l.write(log)
+func (l *Logger) Info(action ActionInfo, data interface{}, maskingRules ...MaskingRule) {
+	l.Detail("info", action, data, maskingRules...)
 }
 
 func (l *Logger) Debug(action, message string, opts ...LogOption) {

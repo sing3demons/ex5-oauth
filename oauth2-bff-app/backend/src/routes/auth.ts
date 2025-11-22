@@ -257,11 +257,24 @@ router.post('/refresh', requireRefreshToken, async (req: Request, res: Response)
  * Clear refresh token cookie
  */
 router.post('/logout', (req: Request, res: Response) => {
-  res.clearCookie('refresh_token', {
+  // Clear refresh token cookie with all possible options
+  const cookieOptions = {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    path: '/'
+    sameSite: 'lax' as const,
+    path: '/',
+  };
+
+  // Clear cookie multiple times with different options to ensure it's removed
+  res.clearCookie('refresh_token', cookieOptions);
+  res.clearCookie('refresh_token', { path: '/' });
+  res.clearCookie('refresh_token');
+
+  // Set cookie with expired date as fallback
+  res.cookie('refresh_token', '', {
+    ...cookieOptions,
+    maxAge: 0,
+    expires: new Date(0),
   });
 
   res.json({

@@ -8,6 +8,7 @@ import (
 	"oauth2-server/config"
 	"oauth2-server/database"
 	"oauth2-server/handlers"
+	"oauth2-server/logger"
 	"oauth2-server/middleware"
 	"oauth2-server/repository"
 	"oauth2-server/utils"
@@ -28,7 +29,7 @@ func corsMiddleware(next http.Handler) http.Handler {
 		if origin == "" {
 			origin = "*"
 		}
-		
+
 		w.Header().Set("Access-Control-Allow-Origin", origin)
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept, X-Requested-With")
@@ -88,6 +89,30 @@ func main() {
 
 	// Add CORS middleware
 	r.Use(corsMiddleware)
+	r.Use(func(h http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			pCtx := r.Context()
+			csLog := logger.NewLoggerWithConfig("auth-server", "1.0.0", &logger.LoggerConfig{
+				Detail: logger.LogOutputConfig{
+					Path:    "logs/detail",
+					Console: true,
+					File:    true,
+				},
+				Summary: logger.LogOutputConfig{
+					Path:    "logs/summary",
+					Console: true,
+					File:    true,
+				},
+			})
+
+			pCtx = context.WithValue(pCtx, "logger", csLog)
+			r = r.WithContext(pCtx)
+
+			// set the new context with logger
+
+			h.ServeHTTP(w, r)
+		})
+	})
 
 	r.HandleFunc("/.well-known/openid-configuration", discoveryHandler.WellKnown).Methods("GET")
 	r.HandleFunc("/.well-known/jwks.json", jwksHandler.JWKS).Methods("GET")
